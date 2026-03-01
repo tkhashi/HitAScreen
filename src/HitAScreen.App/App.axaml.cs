@@ -1,0 +1,375 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using HitAScreen.Core;
+using HitAScreen.Infrastructure;
+using HitAScreen.Platform.Abstractions;
+using HitAScreen.Platform.MacOS;
+
+namespace HitAScreen.App;
+
+public partial class App : Application
+{
+    private static readonly Dictionary<int, char> KeyCodeToCharacter = new()
+    {
+        [0] = 'A', [1] = 'S', [2] = 'D', [3] = 'F', [4] = 'H', [5] = 'G', [6] = 'Z', [7] = 'X',
+        [8] = 'C', [9] = 'V', [11] = 'B', [12] = 'Q', [13] = 'W', [14] = 'E', [15] = 'R',
+        [16] = 'Y', [17] = 'T', [31] = 'O', [32] = 'U', [34] = 'I', [35] = 'P', [37] = 'L',
+        [38] = 'J', [40] = 'K', [45] = 'N', [46] = 'M',
+        [18] = '1', [19] = '2', [20] = '3', [21] = '4', [22] = '6', [23] = '5',
+        [25] = '9', [26] = '7', [28] = '8', [29] = '0'
+    };
+
+    private TrayIcon? _trayIcon;
+    private MainWindow? _mainWindow;
+    private OverlayWindow? _overlayWindow;
+    private ScreenSearchOrchestrator? _orchestrator;
+    private ConfigurableFileLogger? _logger;
+    private IPermissionService? _permissionService;
+    private IHotkeyService? _hotkeyService;
+    private bool _isShuttingDown;
+
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+    }
+
+    public override void OnFrameworkInitializationCompleted()
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            MacAppInterop.ConfigureActivationPolicyAccessory();
+            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            desktop.Exit += (_, _) => OnExit();
+
+            InitializeServices();
+            InitializeWindows();
+            InitializeTrayIcon(desktop);
+
+            _ = InitializeOrchestratorAsync();
+        }
+
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private void InitializeServices()
+    {
+        _logger = new ConfigurableFileLogger(AppPaths.LogPath);
+        _permissionService = OperatingSystem.IsMacOS() ? new MacPermissionService() : new NoopPermissionService();
+
+        var hotkey = OperatingSystem.IsMacOS() ? new MacHotkeyService() as IHotkeyService : new NoopHotkeyService();
+        var activeWindow = OperatingSystem.IsMacOS() ? new MacActiveWindowService() as IActiveWindowService : new NoopActiveWindowService();
+        var elementProvider = OperatingSystem.IsMacOS() ? new MacAccessibilityElementProvider() as IAccessibilityElementProvider : new NoopAccessibilityElementProvider();
+        var input = OperatingSystem.IsMacOS() ? new MacInputInjectionService() as IInputInjectionService : new NoopInputInjectionService();
+        var displays = OperatingSystem.IsMacOS() ? new MacDisplayService() as IDisplayService : new NoopDisplayService();
+        var store = new JsonSettingsStore(AppPaths.SettingsPath);
+        _hotkeyService = hotkey;
+
+        _orchestrator = new ScreenSearchOrchestrator(
+            hotkey,
+            activeWindow,
+            elementProvider,
+            input,
+            displays,
+            _permissionService,
+            store,
+            _logger);
+
+        _orchestrator.SettingsChanged += settings =>
+        {
+            _logger.SetFileLogging(settings.DebugLoggingEnabled);
+            Dispatcher.UIThread.Post(() => _mainWindow?.LoadSettings(settings));
+        };
+
+        _orchestrator.DiagnosticsChanged += diagnostics =>
+            Dispatcher.UIThread.Post(() => _mainWindow?.AppendDiagnostics(diagnostics));
+
+        _orchestrator.OverlayStateChanged += state =>
+            Dispatcher.UIThread.Post(() => ApplyOverlayState(state));
+
+        hotkey.KeyPressed += OnGlobalKeyPressed;
+    }
+
+    private void InitializeWindows()
+    {
+        if (_orchestrator is null || _permissionService is null || _logger is null)
+        {
+            throw new InvalidOperationException("Services are not initialized.");
+        }
+
+        _mainWindow = new MainWindow(_orchestrator, _permissionService, _logger)
+        {
+            Title = "HitAScreen Control Panel"
+        };
+
+        _mainWindow.Closing += (_, e) =>
+        {
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            _mainWindow.Hide();
+        };
+
+        _overlayWindow = new OverlayWindow();
+        _overlayWindow.CharacterTyped += character => _orchestrator.HandleCharacter(character);
+        _overlayWindow.BackspacePressed += () => _orchestrator.HandleBackspace();
+        _overlayWindow.EnterPressed += () => _orchestrator.ConfirmInput();
+        _overlayWindow.EscapePressed += () => _orchestrator.CancelSession();
+        _overlayWindow.MonitorSwitchRequested += direction => _orchestrator.SwitchMonitor(direction);
+        _overlayWindow.ActionSelected += action => _orchestrator.SetPendingAction(action);
+        _overlayWindow.ReanalyzeRequested += () => _orchestrator.Reanalyze();
+    }
+
+    private void InitializeTrayIcon(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        _trayIcon = new TrayIcon
+        {
+            Icon = LoadTrayIcon(),
+            ToolTipText = "HitAScreen",
+            IsVisible = true,
+            Menu = BuildTrayMenu(desktop)
+        };
+
+        if (OperatingSystem.IsMacOS())
+        {
+            MacOSProperties.SetIsTemplateIcon(_trayIcon, true);
+        }
+
+        var icons = new TrayIcons();
+        icons.Add(_trayIcon);
+        TrayIcon.SetIcons(this, icons);
+    }
+
+    private NativeMenu BuildTrayMenu(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var openSettings = new NativeMenuItem("Open Control Panel");
+        openSettings.Click += (_, _) => ShowMainWindow();
+
+        var startSearch = new NativeMenuItem("Start Screen Search");
+        startSearch.Click += (_, _) => _orchestrator?.StartSession();
+
+        var requestPermissions = new NativeMenuItem("Request Permissions");
+        requestPermissions.Click += (_, _) =>
+        {
+            var result = _permissionService?.RequestMissingPermissions();
+            if (result is not null)
+            {
+                _mainWindow?.AppendDiagnostics(new SessionDiagnostics(
+                    DateTimeOffset.Now,
+                    "Permissions",
+                    $"accessibility={result.AccessibilityGranted}, input={result.InputMonitoringGranted}, screen={result.ScreenRecordingGranted}",
+                    null,
+                    null,
+                    null,
+                    0,
+                    null,
+                    result));
+            }
+        };
+
+        var exit = new NativeMenuItem("Exit");
+        exit.Click += (_, _) =>
+        {
+            _isShuttingDown = true;
+            desktop.Shutdown();
+        };
+
+        return new NativeMenu
+        {
+            Items =
+            {
+                openSettings,
+                startSearch,
+                requestPermissions,
+                new NativeMenuItemSeparator(),
+                exit
+            }
+        };
+    }
+
+    private async Task InitializeOrchestratorAsync()
+    {
+        if (_orchestrator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _orchestrator.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to initialize orchestrator.", ex);
+        }
+    }
+
+    private void ApplyOverlayState(OverlayViewState? state)
+    {
+        if (_overlayWindow is null)
+        {
+            return;
+        }
+
+        if (state is null)
+        {
+            _overlayWindow.Hide();
+            return;
+        }
+
+        var labelScale = _orchestrator?.Settings.LabelScale ?? 1.0;
+        _overlayWindow.Render(state, labelScale);
+        if (!_overlayWindow.IsVisible)
+        {
+            _overlayWindow.Show();
+        }
+
+    }
+
+    private void ShowMainWindow()
+    {
+        if (_mainWindow is null)
+        {
+            return;
+        }
+
+        if (!_mainWindow.IsVisible)
+        {
+            _mainWindow.Show();
+        }
+
+        _mainWindow.Activate();
+    }
+
+    private static WindowIcon LoadTrayIcon()
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/tray.png"));
+        return new WindowIcon(stream);
+    }
+
+    private void OnExit()
+    {
+        _isShuttingDown = true;
+        if (_hotkeyService is not null)
+        {
+            _hotkeyService.KeyPressed -= OnGlobalKeyPressed;
+        }
+        _overlayWindow?.Close();
+        _mainWindow?.Close();
+        _trayIcon?.Dispose();
+        _orchestrator?.Dispose();
+    }
+
+    private void OnGlobalKeyPressed(GlobalKeyEvent key)
+    {
+        var orchestrator = _orchestrator;
+        if (orchestrator is null || orchestrator.State != SessionState.OverlayActive)
+        {
+            return;
+        }
+
+        switch (key.KeyCode)
+        {
+            case 53: // ESC
+                Dispatcher.UIThread.Post(orchestrator.CancelSession);
+                return;
+            case 51: // Backspace
+                Dispatcher.UIThread.Post(orchestrator.HandleBackspace);
+                return;
+            case 36: // Enter
+                Dispatcher.UIThread.Post(orchestrator.ConfirmInput);
+                return;
+            case 123: // Left
+                Dispatcher.UIThread.Post(() => orchestrator.SwitchMonitor(MonitorSwitchDirection.Left));
+                return;
+            case 124: // Right
+                Dispatcher.UIThread.Post(() => orchestrator.SwitchMonitor(MonitorSwitchDirection.Right));
+                return;
+            case 48: // Tab
+                Dispatcher.UIThread.Post(orchestrator.Reanalyze);
+                return;
+            case 122: // F1
+                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.LeftClick));
+                return;
+            case 120: // F2
+                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.RightClick));
+                return;
+            case 99: // F3
+                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.DoubleClick));
+                return;
+            case 118: // F4
+                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.Focus));
+                return;
+        }
+
+        if (key.Command || key.Control || key.Option)
+        {
+            return;
+        }
+
+        if (KeyCodeToCharacter.TryGetValue(key.KeyCode, out var ch))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.HandleCharacter(ch));
+        }
+    }
+
+    private sealed class NoopHotkeyService : IHotkeyService
+    {
+        public bool IsRegistered { get; private set; }
+        public event Action? HotkeyPressed;
+        public event Action<GlobalKeyEvent>? KeyPressed;
+        public HotkeyRegistrationResult Register(HotkeyChord chord)
+        {
+            IsRegistered = true;
+            _ = HotkeyPressed;
+            _ = KeyPressed;
+            return new HotkeyRegistrationResult(true);
+        }
+
+        public void Unregister() => IsRegistered = false;
+        public void Dispose() => IsRegistered = false;
+    }
+
+    private sealed class NoopActiveWindowService : IActiveWindowService
+    {
+        public ActiveWindowContext? TryCaptureForegroundWindow() => null;
+    }
+
+    private sealed class NoopAccessibilityElementProvider : IAccessibilityElementProvider
+    {
+        public IReadOnlyList<UiCandidate> GetActionableElements(AnalysisContext context) => Array.Empty<UiCandidate>();
+    }
+
+    private sealed class NoopInputInjectionService : IInputInjectionService
+    {
+        public void Execute(UiActionType action, UiCandidate candidate)
+        {
+        }
+    }
+
+    private sealed class NoopDisplayService : IDisplayService
+    {
+        private static readonly DisplayInfo FallbackDisplay = new("fallback", new ScreenRect(0, 0, 1280, 800), 1.0, true);
+
+        public IReadOnlyList<DisplayInfo> GetDisplays() => [FallbackDisplay];
+
+        public DisplayInfo? GetDisplayById(string displayId) => FallbackDisplay;
+
+        public DisplayInfo? GetDisplayContainingPoint(ScreenPoint point) => FallbackDisplay;
+
+        public ScreenPoint GetCursorPosition() => new(0, 0);
+    }
+
+    private sealed class NoopPermissionService : IPermissionService
+    {
+        public PermissionSnapshot GetCurrentStatus() => new(false, false, false, "unsupported platform");
+
+        public PermissionSnapshot RequestMissingPermissions() => GetCurrentStatus();
+    }
+}

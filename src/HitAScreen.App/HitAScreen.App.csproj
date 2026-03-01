@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+    <ProjectReference Include="../HitAScreen.Core/HitAScreen.Core.csproj" />
+    <ProjectReference Include="../HitAScreen.Platform.Abstractions/HitAScreen.Platform.Abstractions.csproj" />
+    <ProjectReference Include="../HitAScreen.Platform.MacOS/HitAScreen.Platform.MacOS.csproj" />
+    <ProjectReference Include="../HitAScreen.Infrastructure/HitAScreen.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

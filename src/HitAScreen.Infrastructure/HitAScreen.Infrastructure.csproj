@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../HitAScreen.Core/HitAScreen.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HitAScreen.App/HitAScreen.App.csproj" />
+    <Project Path="src/HitAScreen.Core/HitAScreen.Core.csproj" />
+    <Project Path="src/HitAScreen.Infrastructure/HitAScreen.Infrastructure.csproj" />
+    <Project Path="src/HitAScreen.Platform.Abstractions/HitAScreen.Platform.Abstractions.csproj" />
+    <Project Path="src/HitAScreen.Platform.MacOS/HitAScreen.Platform.MacOS.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HitAScreen.Core.Tests/HitAScreen.Core.Tests.csproj" />
+  </Folder>
+</Solution>
