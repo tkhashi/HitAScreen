@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/HitAScreen.Core/HitAScreen.Core.csproj" />
+    <ProjectReference Include="../../src/HitAScreen.Infrastructure/HitAScreen.Infrastructure.csproj" />
     <ProjectReference Include="../../src/HitAScreen.Platform.Abstractions/HitAScreen.Platform.Abstractions.csproj" />
   </ItemGroup>
 </Project>
