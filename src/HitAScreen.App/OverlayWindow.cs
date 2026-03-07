@@ -95,14 +95,22 @@ public sealed class OverlayWindow : Window
         var normalizedOpacity = Math.Clamp(appearance.Opacity, 0.1, 1.0);
         var normalBackground = WithOpacity(ParseColor(appearance.NormalBackgroundColor, Color.FromRgb(90, 90, 90)), normalizedOpacity);
         var matchedBackground = WithOpacity(ParseColor(appearance.MatchedBackgroundColor, Color.FromRgb(255, 214, 92)), normalizedOpacity);
-        var labelWidth = Math.Clamp(appearance.LabelWidth * labelScale, 20, 180);
-        var labelHeight = Math.Clamp(appearance.LabelHeight * labelScale, 16, 120);
         var fontSize = Math.Clamp(appearance.FontSize * labelScale, 8, 48);
+        var horizontalPadding = Math.Max(3, Math.Round(fontSize * 0.25));
+        var verticalPadding = Math.Max(1, Math.Round(fontSize * 0.15));
 
         foreach (var hint in state.Hints)
         {
             var left = (hint.Bounds.X - state.OverlayBounds.X) / desktopScale;
             var top = (hint.Bounds.Y - state.OverlayBounds.Y) / desktopScale;
+            var textBlock = new TextBlock
+            {
+                Text = hint.Label,
+                FontWeight = FontWeight.Bold,
+                FontSize = fontSize,
+                Foreground = Brushes.Black
+            };
+            textBlock.Measure(Size.Infinity);
 
             var border = new Border
             {
@@ -112,16 +120,8 @@ public sealed class OverlayWindow : Window
                 BorderBrush = new SolidColorBrush(Color.FromArgb(220, 12, 20, 26)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
-                Width = labelWidth,
-                Height = labelHeight,
-                Padding = new Thickness(6, 2),
-                Child = new TextBlock
-                {
-                    Text = hint.Label,
-                    FontWeight = FontWeight.Bold,
-                    FontSize = fontSize,
-                    Foreground = Brushes.Black
-                }
+                Padding = new Thickness(horizontalPadding, verticalPadding),
+                Child = textBlock
             };
 
             Canvas.SetLeft(border, Math.Max(0, left));

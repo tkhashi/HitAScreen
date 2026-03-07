@@ -7,7 +7,7 @@
         MinHeight="520"
         CanResize="True">
   <Grid RowDefinitions="Auto,*" Margin="16">
-    <TextBlock Text="HitAScreen Control Panel" FontSize="22" FontWeight="SemiBold" />
+    <TextBlock Text="Hit A Screen Control Panel" FontSize="22" FontWeight="SemiBold" />
 
     <Grid Row="1" ColumnDefinitions="2*,3*" ColumnSpacing="16" Margin="0,16,0,0">
       <Border BorderThickness="1" BorderBrush="#304050" CornerRadius="8" Padding="12">

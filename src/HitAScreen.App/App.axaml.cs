@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using System.Diagnostics;
 using HitAScreen.Core;
 using HitAScreen.Infrastructure;
 using HitAScreen.Platform.Abstractions;
@@ -108,6 +109,8 @@ public partial class App : Application
             e.Cancel = true;
             _mainWindow.Hide();
         };
+        _mainWindow.Activated += async (_, _) => await SafeRefreshHotkeyRegistrationAsync();
+        _mainWindow.Deactivated += async (_, _) => await SafeRefreshHotkeyRegistrationAsync();
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.CharacterTyped += character => _orchestrator.HandleCharacter(character);
@@ -166,6 +169,9 @@ public partial class App : Application
             }
         };
 
+        var restart = new NativeMenuItem("Restart App");
+        restart.Click += (_, _) => RestartApplication(desktop);
+
         var exit = new NativeMenuItem("Exit");
         exit.Click += (_, _) =>
         {
@@ -180,6 +186,7 @@ public partial class App : Application
                 openSettings,
                 startSearch,
                 requestPermissions,
+                restart,
                 new NativeMenuItemSeparator(),
                 exit
             }
@@ -200,6 +207,23 @@ public partial class App : Application
         catch (Exception ex)
         {
             _logger?.Error("Failed to initialize orchestrator.", ex);
+        }
+    }
+
+    private async Task SafeRefreshHotkeyRegistrationAsync()
+    {
+        if (_orchestrator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _orchestrator.RefreshHotkeyRegistrationAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to refresh hotkey registration.", ex);
         }
     }
 
@@ -245,6 +269,43 @@ public partial class App : Application
     {
         using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/hit-a-screen-icon.png"));
         return new WindowIcon(stream);
+    }
+
+    private void RestartApplication(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        try
+        {
+            var processPath = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(processPath))
+            {
+                throw new InvalidOperationException("実行ファイルのパスを解決できません。");
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = processPath,
+                WorkingDirectory = AppContext.BaseDirectory,
+                UseShellExecute = true
+            });
+
+            _isShuttingDown = true;
+            desktop.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to restart application.", ex);
+            _mainWindow?.AppendDiagnostics(new SessionDiagnostics(
+                DateTimeOffset.Now,
+                "Restart",
+                $"restart-failed: {ex.Message}",
+                null,
+                null,
+                null,
+                0,
+                null,
+                _permissionService?.GetCurrentStatus()));
+            ShowMainWindow();
+        }
     }
 
     private void OnExit()
