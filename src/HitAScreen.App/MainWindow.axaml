@@ -15,8 +15,32 @@
           <StackPanel Spacing="10">
             <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" />
 
-            <TextBlock Text="Hotkey" />
+            <TextBlock Text="起動ホットキー" />
             <TextBox Name="HotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="モニタ左切替" />
+            <TextBox Name="MonitorLeftHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="モニタ右切替" />
+            <TextBox Name="MonitorRightHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="再解析キー" />
+            <TextBox Name="ReanalyzeHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="アクション: 左クリック" />
+            <TextBox Name="ActionLeftHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="アクション: 右クリック" />
+            <TextBox Name="ActionRightHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="アクション: ダブルクリック" />
+            <TextBox Name="ActionDoubleHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="アクション: フォーカス" />
+            <TextBox Name="ActionFocusHotkeyTextBox" IsReadOnly="True" />
+
+            <TextBlock Text="固定キー (編集不可): ESC / Enter / Backspace" />
+            <TextBox IsReadOnly="True" Text="ESC / Enter / Backspace" />
 
             <TextBlock Text="Default Analysis Target" />
             <ComboBox Name="TargetComboBox" SelectedIndex="0">
@@ -30,12 +54,48 @@
             <TextBlock Text="Label Scale (0.5 - 3.0)" />
             <TextBox Name="LabelScaleTextBox" />
 
+            <TextBlock Text="除外 AX Role (カンマ区切り)" />
+            <TextBox Name="ExcludedAxRolesTextBox" AcceptsReturn="True" Height="60" />
+
+            <TextBlock Text="ラベル通常色 (#RRGGBB または #AARRGGBB)" />
+            <TextBox Name="LabelNormalColorTextBox" />
+
+            <TextBlock Text="ラベル一致色 (#RRGGBB または #AARRGGBB)" />
+            <TextBox Name="LabelMatchedColorTextBox" />
+
+            <TextBlock Text="ラベル透明度 (0.1 - 1.0)" />
+            <TextBox Name="LabelOpacityTextBox" />
+
+            <TextBlock Text="ラベル幅 (20 - 180)" />
+            <TextBox Name="LabelWidthTextBox" />
+
+            <TextBlock Text="ラベル高さ (16 - 120)" />
+            <TextBox Name="LabelHeightTextBox" />
+
+            <TextBlock Text="ラベルフォントサイズ (8 - 48)" />
+            <TextBox Name="LabelFontSizeTextBox" />
+
             <CheckBox Name="SuppressFullscreenCheckBox" Content="Suppress hotkey when fullscreen window is active" />
             <CheckBox Name="ContinuousModeCheckBox" Content="Continuous mode (stay in overlay after action)" />
             <CheckBox Name="DebugLoggingCheckBox" Content="Enable persistent debug log" />
+            <CheckBox Name="LaunchAtLoginCheckBox" Content="Launch at login" />
 
             <TextBlock Text="Suppressed Processes (comma separated, e.g. Vivaldi, Steam)" TextWrapping="Wrap" />
             <TextBox Name="SuppressedProcessTextBox" AcceptsReturn="True" Height="90" />
+
+            <TextBlock Text="権限状態" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
+            <TextBlock Name="AccessibilityPermissionTextBlock" />
+            <TextBlock Name="InputMonitoringPermissionTextBlock" />
+            <TextBlock Name="ScreenRecordingPermissionTextBlock" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Name="RefreshPermissionButton" Content="権限状態を再取得" />
+              <Button Name="OpenAccessibilitySettingsButton" Content="Accessibility を開く" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Name="OpenInputMonitoringSettingsButton" Content="Input Monitoring を開く" />
+              <Button Name="OpenScreenRecordingSettingsButton" Content="Screen Recording を開く" />
+            </StackPanel>
 
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Button Name="SaveSettingsButton" Content="Save Settings" />

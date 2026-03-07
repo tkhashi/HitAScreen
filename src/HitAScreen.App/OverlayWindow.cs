@@ -65,7 +65,7 @@ public sealed class OverlayWindow : Window
     public event Action<UiActionType>? ActionSelected;
     public event Action? ReanalyzeRequested;
 
-    public void Render(OverlayViewState state, double labelScale)
+    public void Render(OverlayViewState state, LabelAppearanceSettings appearance, double labelScale)
     {
         var x = (int)Math.Round(state.TargetBounds.X);
         var y = (int)Math.Round(state.TargetBounds.Y);
@@ -78,6 +78,13 @@ public sealed class OverlayWindow : Window
 
         _hintCanvas.Children.Clear();
 
+        var normalizedOpacity = Math.Clamp(appearance.Opacity, 0.1, 1.0);
+        var normalBackground = WithOpacity(ParseColor(appearance.NormalBackgroundColor, Color.FromRgb(90, 90, 90)), normalizedOpacity);
+        var matchedBackground = WithOpacity(ParseColor(appearance.MatchedBackgroundColor, Color.FromRgb(255, 214, 92)), normalizedOpacity);
+        var labelWidth = Math.Clamp(appearance.LabelWidth * labelScale, 20, 180);
+        var labelHeight = Math.Clamp(appearance.LabelHeight * labelScale, 16, 120);
+        var fontSize = Math.Clamp(appearance.FontSize * labelScale, 8, 48);
+
         foreach (var hint in state.Hints)
         {
             var left = hint.Bounds.X - state.TargetBounds.X;
@@ -86,17 +93,19 @@ public sealed class OverlayWindow : Window
             var border = new Border
             {
                 Background = hint.MatchesInput
-                    ? new SolidColorBrush(Color.FromArgb(235, 255, 214, 92))
-                    : new SolidColorBrush(Color.FromArgb(160, 90, 90, 90)),
+                    ? new SolidColorBrush(matchedBackground)
+                    : new SolidColorBrush(normalBackground),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(220, 12, 20, 26)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
+                Width = labelWidth,
+                Height = labelHeight,
                 Padding = new Thickness(6, 2),
                 Child = new TextBlock
                 {
                     Text = hint.Label,
                     FontWeight = FontWeight.Bold,
-                    FontSize = 14 * labelScale,
+                    FontSize = fontSize,
                     Foreground = Brushes.Black
                 }
             };
@@ -108,7 +117,7 @@ public sealed class OverlayWindow : Window
 
         _statusText.Text =
             $"Input: {state.Input}  Action: {state.PendingAction}  Target: {state.Target}  Hints: {state.Hints.Count}\n" +
-            "Keys: ESC cancel, Enter confirm, Backspace delete, Left/Right switch monitor, Tab reanalyze, F1/F2/F3/F4 action";
+            "Keys: ESC cancel, Enter confirm, Backspace delete, その他の操作キーは設定値を参照";
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -180,5 +189,16 @@ public sealed class OverlayWindow : Window
 
         character = default;
         return false;
+    }
+
+    private static Color ParseColor(string raw, Color fallback)
+    {
+        return Color.TryParse(raw, out var parsed) ? parsed : fallback;
+    }
+
+    private static Color WithOpacity(Color color, double opacity)
+    {
+        var alpha = (byte)Math.Clamp((int)Math.Round(color.A * opacity), 0, 255);
+        return Color.FromArgb(alpha, color.R, color.G, color.B);
     }
 }
