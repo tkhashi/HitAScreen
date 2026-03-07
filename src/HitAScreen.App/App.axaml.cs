@@ -245,7 +245,9 @@ public partial class App : Application
         if (!_overlayWindow.IsVisible)
         {
             _overlayWindow.Show();
-            _overlayWindow.Render(state, settings.LabelAppearance, settings.LabelScale);
+            Dispatcher.UIThread.Post(
+                () => _overlayWindow.Render(state, settings.LabelAppearance, settings.LabelScale),
+                DispatcherPriority.Loaded);
         }
 
     }

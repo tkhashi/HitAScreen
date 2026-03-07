@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using HitAScreen.Platform.Abstractions;
 
 namespace HitAScreen.App;
@@ -62,7 +63,7 @@ public sealed class OverlayWindow : Window
         Opened += (_, _) =>
         {
             MacAppInterop.MakeOverlayClickThrough(this);
-            ReapplyLastRender();
+            Dispatcher.UIThread.Post(ReapplyLastRender, DispatcherPriority.Loaded);
         };
     }
 
@@ -86,9 +87,9 @@ public sealed class OverlayWindow : Window
         var width = Math.Max(1, (int)Math.Round(state.OverlayBounds.Width));
         var height = Math.Max(1, (int)Math.Round(state.OverlayBounds.Height));
 
-        Position = new PixelPoint(x, y);
         Width = width / desktopScale;
         Height = height / desktopScale;
+        Position = new PixelPoint(x, y);
 
         _hintCanvas.Children.Clear();
 
