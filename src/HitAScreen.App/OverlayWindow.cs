@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using HitAScreen.Platform.Abstractions;
 
 namespace HitAScreen.App;
@@ -12,10 +13,14 @@ public sealed class OverlayWindow : Window
     private readonly Grid _root;
     private readonly Canvas _hintCanvas;
     private readonly TextBlock _statusText;
+    private OverlayViewState? _lastState;
+    private LabelAppearanceSettings? _lastAppearance;
+    private double _lastLabelScale = 1.0;
 
     public OverlayWindow()
     {
         SystemDecorations = SystemDecorations.None;
+        WindowStartupLocation = WindowStartupLocation.Manual;
         ShowInTaskbar = false;
         Topmost = true;
         CanResize = false;
@@ -55,7 +60,11 @@ public sealed class OverlayWindow : Window
         Content = _root;
 
         KeyDown += OnKeyDown;
-        Opened += (_, _) => MacAppInterop.MakeOverlayClickThrough(this);
+        Opened += (_, _) =>
+        {
+            MacAppInterop.MakeOverlayClickThrough(this);
+            Dispatcher.UIThread.Post(ReapplyLastRender, DispatcherPriority.Loaded);
+        };
     }
 
     public event Action<char>? CharacterTyped;
@@ -68,29 +77,41 @@ public sealed class OverlayWindow : Window
 
     public void Render(OverlayViewState state, LabelAppearanceSettings appearance, double labelScale)
     {
-        var displayScale = Math.Max(1.0, state.TargetDisplay.DpiScale);
-        var x = (int)Math.Round(state.TargetBounds.X);
-        var y = (int)Math.Round(state.TargetBounds.Y);
-        var width = Math.Max(1, (int)Math.Round(state.TargetBounds.Width));
-        var height = Math.Max(1, (int)Math.Round(state.TargetBounds.Height));
+        _lastState = state;
+        _lastAppearance = appearance;
+        _lastLabelScale = labelScale;
 
+        var desktopScale = ResolveDesktopScale(state);
+        var x = (int)Math.Round(state.OverlayBounds.X);
+        var y = (int)Math.Round(state.OverlayBounds.Y);
+        var width = Math.Max(1, (int)Math.Round(state.OverlayBounds.Width));
+        var height = Math.Max(1, (int)Math.Round(state.OverlayBounds.Height));
+
+        Width = width / desktopScale;
+        Height = height / desktopScale;
         Position = new PixelPoint(x, y);
-        Width = width / displayScale;
-        Height = height / displayScale;
 
         _hintCanvas.Children.Clear();
 
         var normalizedOpacity = Math.Clamp(appearance.Opacity, 0.1, 1.0);
         var normalBackground = WithOpacity(ParseColor(appearance.NormalBackgroundColor, Color.FromRgb(90, 90, 90)), normalizedOpacity);
         var matchedBackground = WithOpacity(ParseColor(appearance.MatchedBackgroundColor, Color.FromRgb(255, 214, 92)), normalizedOpacity);
-        var labelWidth = Math.Clamp(appearance.LabelWidth * labelScale, 20, 180);
-        var labelHeight = Math.Clamp(appearance.LabelHeight * labelScale, 16, 120);
         var fontSize = Math.Clamp(appearance.FontSize * labelScale, 8, 48);
+        var horizontalPadding = Math.Max(3, Math.Round(fontSize * 0.25));
+        var verticalPadding = Math.Max(1, Math.Round(fontSize * 0.15));
 
         foreach (var hint in state.Hints)
         {
-            var left = (hint.Bounds.X - state.TargetBounds.X) / displayScale;
-            var top = (hint.Bounds.Y - state.TargetBounds.Y) / displayScale;
+            var left = (hint.Bounds.X - state.OverlayBounds.X) / desktopScale;
+            var top = (hint.Bounds.Y - state.OverlayBounds.Y) / desktopScale;
+            var textBlock = new TextBlock
+            {
+                Text = hint.Label,
+                FontWeight = FontWeight.Bold,
+                FontSize = fontSize,
+                Foreground = Brushes.Black
+            };
+            textBlock.Measure(Size.Infinity);
 
             var border = new Border
             {
@@ -100,16 +121,8 @@ public sealed class OverlayWindow : Window
                 BorderBrush = new SolidColorBrush(Color.FromArgb(220, 12, 20, 26)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
-                Width = labelWidth,
-                Height = labelHeight,
-                Padding = new Thickness(6, 2),
-                Child = new TextBlock
-                {
-                    Text = hint.Label,
-                    FontWeight = FontWeight.Bold,
-                    FontSize = fontSize,
-                    Foreground = Brushes.Black
-                }
+                Padding = new Thickness(horizontalPadding, verticalPadding),
+                Child = textBlock
             };
 
             Canvas.SetLeft(border, Math.Max(0, left));
@@ -120,6 +133,26 @@ public sealed class OverlayWindow : Window
         _statusText.Text =
             $"Input: {state.Input}  Action: {state.PendingAction}  Target: {state.Target}  Hints: {state.Hints.Count}\n" +
             "Keys: ESC cancel, Enter confirm, Backspace delete, その他の操作キーは設定値を参照";
+    }
+
+    private void ReapplyLastRender()
+    {
+        if (_lastState is null || _lastAppearance is null)
+        {
+            return;
+        }
+
+        Render(_lastState, _lastAppearance, _lastLabelScale);
+    }
+
+    private double ResolveDesktopScale(OverlayViewState state)
+    {
+        if (DesktopScaling > 0)
+        {
+            return Math.Max(1.0, DesktopScaling);
+        }
+
+        return Math.Max(1.0, state.TargetDisplay.DpiScale);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

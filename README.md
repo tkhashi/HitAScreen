@@ -41,17 +41,17 @@ dotnet run --project src/HitAScreen.App/HitAScreen.App.csproj
 ## リリース版の導入（GitHub Releases）
 1. Releases から `HitAScreen-<version>-macos-arm64.dmg` と `SHA256SUMS.txt` を取得する。
 2. ターミナルで `shasum -a 256 HitAScreen-<version>-macos-arm64.dmg` を実行し、`SHA256SUMS.txt` の値と一致することを確認する。
-3. `dmg` を開いて `HitAScreen.app` を `Applications` へコピーする。
+3. `dmg` を開いて `Hit A Screen.app` を `Applications` へコピーする。
 4. 初回起動時に Gatekeeper 警告が出た場合は、`システム設定 > プライバシーとセキュリティ` から実行を許可する。
 
 ## 初回起動時の権限設定
-1. `HitAScreen.app` を起動し、コントロールパネルを開く。
+1. `Hit A Screen.app` を起動し、コントロールパネルを開く。
 2. 設定画面の `Accessibility を開く` / `Input Monitoring を開く` / `Screen Recording を開く` ボタンから各設定画面を開く。
-3. 以下 3 権限で HitAScreen を許可する。
+3. 以下 2 権限は必須で許可する。
    - Accessibility
    - Input Monitoring
-   - Screen Recording
-4. 設定画面の `権限状態を再取得` を押し、3 項目が `許可済み` になることを確認する。
+4. `Screen Recording` は任意。未許可でも動作するが、一部アプリではウィンドウタイトル取得が制限され、対象ウィンドウ照合精度が下がる場合がある。
+5. 設定画面の `権限状態を再取得` を押し、必須 2 項目が `許可済み` になっていることを確認する。
 
 ## オーバーレイ操作キー
 - `Esc`: キャンセル
@@ -66,5 +66,5 @@ dotnet run --project src/HitAScreen.App/HitAScreen.App.csproj
 - `A-Z`, `0-9`: ラベル入力
 
 ## 補足
-- macOS での完全な動作には、画面収録 / 入力監視 / アクセシビリティの権限が必要です。
+- macOS での基本動作には、入力監視 / アクセシビリティの権限が必要です。`Screen Recording` は任意で、許可すると一部アプリで前面ウィンドウ照合精度が上がります。
 - OCR と画像ベースフォールバックは、このイテレーションではスコープ外です。

@@ -178,6 +178,7 @@ public sealed class SettingsAndFilteringTests
     private sealed class RecordingHotkeyService : IHotkeyService
     {
         public bool IsRegistered { get; private set; }
+        public bool SuppressKeyPropagation { get; set; }
         public HotkeyChord LastRegisteredChord { get; private set; } = new(46, true, false, false, true, "Cmd+Shift+M");
         public event Action? HotkeyPressed;
         public event Action<GlobalKeyEvent>? KeyPressed;

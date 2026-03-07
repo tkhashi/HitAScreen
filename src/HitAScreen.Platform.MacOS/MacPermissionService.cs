@@ -16,10 +16,14 @@ public sealed class MacPermissionService : IPermissionService
             return new PermissionSnapshot(false, false, false, "macOS only");
         }
 
+        var screenRecordingGranted = CGPreflightScreenCaptureAccess();
         return new PermissionSnapshot(
             AXIsProcessTrusted(),
             CGPreflightListenEventAccess(),
-            CGPreflightScreenCaptureAccess());
+            screenRecordingGranted,
+            screenRecordingGranted
+                ? null
+                : "Screen Recording は任意です。未許可でも動作しますが、一部アプリではウィンドウタイトル取得が制限され、対象ウィンドウ照合精度が下がる場合があります。");
     }
 
     public PermissionSnapshot RequestMissingPermissions()
@@ -32,11 +36,6 @@ public sealed class MacPermissionService : IPermissionService
         if (!CGPreflightListenEventAccess())
         {
             CGRequestListenEventAccess();
-        }
-
-        if (!CGPreflightScreenCaptureAccess())
-        {
-            CGRequestScreenCaptureAccess();
         }
 
         return GetCurrentStatus();
@@ -95,6 +94,4 @@ public sealed class MacPermissionService : IPermissionService
     [DllImport(CoreGraphics)]
     private static extern bool CGPreflightScreenCaptureAccess();
 
-    [DllImport(CoreGraphics)]
-    private static extern bool CGRequestScreenCaptureAccess();
 }

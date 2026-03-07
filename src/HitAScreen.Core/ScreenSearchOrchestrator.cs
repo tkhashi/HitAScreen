@@ -182,6 +182,9 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _state = SessionState.OverlayActive;
         }
 
+        EnsureHotkeyListenerRegistered();
+        _hotkeyService.SuppressKeyPropagation = true;
+
         totalStopwatch.Stop();
 
         lock (_sync)
@@ -324,6 +327,19 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        var sessionActive = false;
+        lock (_sync)
+        {
+            sessionActive = _session is not null;
+        }
+
+        if (sessionActive)
+        {
+            EnsureHotkeyListenerRegistered();
+            _hotkeyService.SuppressKeyPropagation = true;
+            return;
+        }
+
         var context = _activeWindowService.TryCaptureForegroundWindow();
         var normalizedContext = context is null ? null : EnsureContextHasDisplay(context);
         var display = normalizedContext?.DisplayId is null
@@ -381,6 +397,37 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         }
     }
 
+    private void EnsureHotkeyListenerRegistered()
+    {
+        var chordChanged = _registeredChord is null || _registeredChord.Value != _settings.Hotkey;
+        if (_hotkeyService.IsRegistered && !chordChanged)
+        {
+            _suppressionActive = false;
+            return;
+        }
+
+        if (_hotkeyService.IsRegistered)
+        {
+            _hotkeyService.Unregister();
+        }
+
+        var result = _hotkeyService.Register(_settings.Hotkey);
+        lock (_sync)
+        {
+            _lastHotkeyRegistrationResult = result;
+        }
+
+        if (!result.Succeeded)
+        {
+            PublishDiagnostics(message: $"overlay-hotkey-register-failed: {result.Reason}", state: _state, permissions: _permissionService.GetCurrentStatus());
+            _logger.Warn($"Failed to ensure overlay hotkey listener: {result.Reason}");
+            return;
+        }
+
+        _registeredChord = _settings.Hotkey;
+        _suppressionActive = false;
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -394,6 +441,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         _suppressionTask?.Wait(TimeSpan.FromSeconds(1));
 
         _hotkeyService.HotkeyPressed -= OnHotkeyPressed;
+        _hotkeyService.SuppressKeyPropagation = false;
         _hotkeyService.Unregister();
         _hotkeyService.Dispose();
         _suppressionCts?.Dispose();
@@ -667,6 +715,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _state = SessionState.Idle;
         }
 
+        _hotkeyService.SuppressKeyPropagation = false;
+
         OverlayStateChanged?.Invoke(null);
         PublishDiagnostics(message: "session-ended", state: SessionState.Idle, permissions: _permissionService.GetCurrentStatus());
     }
@@ -733,6 +783,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         var state = new OverlayViewState(
             session.SessionId,
             session.TargetBounds,
+            session.Display.Bounds,
             session.Display,
             session.Input,
             session.PendingAction,

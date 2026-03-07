@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using System.Diagnostics;
 using HitAScreen.Core;
 using HitAScreen.Infrastructure;
 using HitAScreen.Platform.Abstractions;
@@ -94,7 +95,8 @@ public partial class App : Application
 
         _mainWindow = new MainWindow(_orchestrator, _permissionService, _launchAtLoginService, _logger)
         {
-            Title = "HitAScreen Control Panel"
+            Title = "Hit A Screen Control Panel",
+            Icon = LoadTrayIcon()
         };
 
         _mainWindow.Closing += (_, e) =>
@@ -107,6 +109,8 @@ public partial class App : Application
             e.Cancel = true;
             _mainWindow.Hide();
         };
+        _mainWindow.Activated += async (_, _) => await SafeRefreshHotkeyRegistrationAsync();
+        _mainWindow.Deactivated += async (_, _) => await SafeRefreshHotkeyRegistrationAsync();
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.CharacterTyped += character => _orchestrator.HandleCharacter(character);
@@ -123,7 +127,7 @@ public partial class App : Application
         _trayIcon = new TrayIcon
         {
             Icon = LoadTrayIcon(),
-            ToolTipText = "HitAScreen",
+            ToolTipText = "Hit A Screen",
             IsVisible = true,
             Menu = BuildTrayMenu(desktop)
         };
@@ -165,6 +169,9 @@ public partial class App : Application
             }
         };
 
+        var restart = new NativeMenuItem("Restart App");
+        restart.Click += (_, _) => RestartApplication(desktop);
+
         var exit = new NativeMenuItem("Exit");
         exit.Click += (_, _) =>
         {
@@ -179,6 +186,7 @@ public partial class App : Application
                 openSettings,
                 startSearch,
                 requestPermissions,
+                restart,
                 new NativeMenuItemSeparator(),
                 exit
             }
@@ -202,6 +210,23 @@ public partial class App : Application
         }
     }
 
+    private async Task SafeRefreshHotkeyRegistrationAsync()
+    {
+        if (_orchestrator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _orchestrator.RefreshHotkeyRegistrationAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to refresh hotkey registration.", ex);
+        }
+    }
+
     private void ApplyOverlayState(OverlayViewState? state)
     {
         if (_overlayWindow is null)
@@ -220,6 +245,9 @@ public partial class App : Application
         if (!_overlayWindow.IsVisible)
         {
             _overlayWindow.Show();
+            Dispatcher.UIThread.Post(
+                () => _overlayWindow.Render(state, settings.LabelAppearance, settings.LabelScale),
+                DispatcherPriority.Loaded);
         }
 
     }
@@ -241,8 +269,45 @@ public partial class App : Application
 
     private static WindowIcon LoadTrayIcon()
     {
-        using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/tray.png"));
+        using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/hit-a-screen-icon.png"));
         return new WindowIcon(stream);
+    }
+
+    private void RestartApplication(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        try
+        {
+            var processPath = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(processPath))
+            {
+                throw new InvalidOperationException("実行ファイルのパスを解決できません。");
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = processPath,
+                WorkingDirectory = AppContext.BaseDirectory,
+                UseShellExecute = true
+            });
+
+            _isShuttingDown = true;
+            desktop.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to restart application.", ex);
+            _mainWindow?.AppendDiagnostics(new SessionDiagnostics(
+                DateTimeOffset.Now,
+                "Restart",
+                $"restart-failed: {ex.Message}",
+                null,
+                null,
+                null,
+                0,
+                null,
+                _permissionService?.GetCurrentStatus()));
+            ShowMainWindow();
+        }
     }
 
     private void OnExit()
@@ -337,6 +402,7 @@ public partial class App : Application
     private sealed class NoopHotkeyService : IHotkeyService
     {
         public bool IsRegistered { get; private set; }
+        public bool SuppressKeyPropagation { get; set; }
         public event Action? HotkeyPressed;
         public event Action<GlobalKeyEvent>? KeyPressed;
         public HotkeyRegistrationResult Register(HotkeyChord chord)
