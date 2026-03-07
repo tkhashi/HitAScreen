@@ -4,6 +4,8 @@ namespace HitAScreen.Core;
 
 public sealed class HintLabelGenerator
 {
+    private const string HomeRowPriority = "ASDFGHJKL";
+
     public IReadOnlyList<string> Generate(int candidateCount, string characterSet)
     {
         if (candidateCount <= 0)
@@ -12,11 +14,12 @@ public sealed class HintLabelGenerator
         }
 
         var symbols = NormalizeCharacterSet(characterSet);
+        var labelLength = ResolveFixedLabelLength(candidateCount, symbols.Length);
         var labels = new string[candidateCount];
 
         for (var index = 0; index < candidateCount; index++)
         {
-            labels[index] = ToLabel(index, symbols);
+            labels[index] = ToFixedLengthLabel(index, symbols, labelLength);
         }
 
         return labels;
@@ -36,35 +39,52 @@ public sealed class HintLabelGenerator
 
     private static char[] NormalizeCharacterSet(string characterSet)
     {
-        var symbols = characterSet
+        var normalized = characterSet
             .ToUpperInvariant()
             .Where(static ch => !char.IsWhiteSpace(ch))
             .Distinct()
             .ToArray();
 
-        if (symbols.Length == 0)
+        if (normalized.Length == 0)
         {
-            return "ASDFGHJKL".ToCharArray();
+            normalized = HomeRowPriority.ToCharArray();
         }
 
-        return symbols;
+        var prioritized = HomeRowPriority
+            .Where(normalized.Contains)
+            .Concat(normalized.Where(ch => !HomeRowPriority.Contains(ch)))
+            .Distinct()
+            .ToArray();
+
+        return prioritized.Length == 0 ? HomeRowPriority.ToCharArray() : prioritized;
     }
 
-    private static string ToLabel(int zeroBasedIndex, char[] symbols)
+    private static int ResolveFixedLabelLength(int candidateCount, int baseCount)
+    {
+        var length = 1;
+        long capacity = baseCount;
+        while (capacity < candidateCount)
+        {
+            length++;
+            capacity *= baseCount;
+        }
+
+        return length;
+    }
+
+    private static string ToFixedLengthLabel(int zeroBasedIndex, char[] symbols, int length)
     {
         var baseCount = symbols.Length;
         var value = zeroBasedIndex;
-        Span<char> buffer = stackalloc char[16];
-        var write = buffer.Length;
+        Span<char> buffer = stackalloc char[length];
 
-        do
+        for (var position = 0; position < length; position++)
         {
             var remainder = value % baseCount;
-            buffer[--write] = symbols[remainder];
-            value = (value / baseCount) - 1;
+            buffer[position] = symbols[remainder];
+            value /= baseCount;
         }
-        while (value >= 0 && write > 0);
 
-        return new string(buffer[write..]);
+        return new string(buffer);
     }
 }

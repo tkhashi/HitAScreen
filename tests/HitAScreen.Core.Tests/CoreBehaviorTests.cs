@@ -7,17 +7,26 @@ namespace HitAScreen.Core.Tests;
 public sealed class CoreBehaviorTests
 {
     [Fact]
-    public void HintLabelGenerator_GeneratesGrowingLabels()
+    public void HintLabelGenerator_GeneratesFixedLengthLabels_WithoutPrefixCollision()
     {
         var generator = new HintLabelGenerator();
 
-        var labels = generator.Generate(30, "AB");
+        var labels = generator.Generate(4, "AB");
 
-        Assert.Equal(30, labels.Count);
-        Assert.Equal("A", labels[0]);
-        Assert.Equal("B", labels[1]);
-        Assert.Equal("AA", labels[2]);
-        Assert.Equal("AB", labels[3]);
+        Assert.Equal(["AA", "BA", "AB", "BB"], labels);
+        Assert.All(labels, static label => Assert.Equal(2, label.Length));
+        for (var i = 0; i < labels.Count; i++)
+        {
+            for (var j = 0; j < labels.Count; j++)
+            {
+                if (i == j)
+                {
+                    continue;
+                }
+
+                Assert.False(labels[j].StartsWith(labels[i], StringComparison.Ordinal));
+            }
+        }
     }
 
     [Fact]
@@ -123,6 +132,61 @@ public sealed class CoreBehaviorTests
         Assert.Equal("foreground-window-not-available", sessionStart.Context!.FallbackReason);
     }
 
+    [Fact]
+    public async Task Orchestrator_DoesNotExecutePrefixMatch_OnConfirmInput()
+    {
+        var hotkey = new FakeHotkeyService();
+        var activeWindow = new FakeActiveWindowService
+        {
+            Context = new ActiveWindowContext(
+                42,
+                123,
+                "Editor",
+                null,
+                "Test",
+                new ScreenRect(10, 20, 1000, 700),
+                "display-1",
+                2,
+                true)
+        };
+
+        var provider = new FakeAccessibilityProvider
+        {
+            Candidates =
+            [
+                new UiCandidate("c1", new ScreenRect(100, 100, 50, 20), "AXButton", null, "A", "AXPress", 0.9, CandidateSource.Accessibility),
+                new UiCandidate("c2", new ScreenRect(200, 100, 50, 20), "AXButton", null, "B", "AXPress", 0.9, CandidateSource.Accessibility),
+                new UiCandidate("c3", new ScreenRect(300, 100, 50, 20), "AXButton", null, "C", "AXPress", 0.9, CandidateSource.Accessibility)
+            ]
+        };
+
+        var input = new FakeInputInjectionService();
+        var display = new FakeDisplayService();
+        var permissions = new FakePermissionService();
+        var store = new InMemorySettingsStore(new UserSettings
+        {
+            LabelCharacterSet = "AB",
+            SuppressInFullscreen = false
+        });
+        var logger = new TestLogger();
+
+        var orchestrator = new ScreenSearchOrchestrator(hotkey, activeWindow, provider, input, display, permissions, store, logger);
+
+        OverlayViewState? latest = null;
+        orchestrator.OverlayStateChanged += state => latest = state;
+
+        await orchestrator.InitializeAsync();
+        orchestrator.StartSession();
+        orchestrator.HandleCharacter('A');
+        orchestrator.ConfirmInput();
+
+        Assert.Equal(0, input.ExecutionCount);
+        Assert.NotNull(latest);
+
+        orchestrator.HandleCharacter('A');
+        Assert.Equal(1, input.ExecutionCount);
+    }
+
     private sealed class FakeHotkeyService : IHotkeyService
     {
         public bool IsRegistered { get; private set; }
@@ -190,7 +254,12 @@ public sealed class CoreBehaviorTests
 
     private sealed class InMemorySettingsStore : ISettingsStore
     {
-        private UserSettings _settings = new();
+        private UserSettings _settings;
+
+        public InMemorySettingsStore(UserSettings? initialSettings = null)
+        {
+            _settings = initialSettings ?? new UserSettings();
+        }
 
         public Task<UserSettings> LoadAsync(CancellationToken cancellationToken = default)
         {
