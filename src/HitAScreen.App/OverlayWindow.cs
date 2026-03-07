@@ -12,10 +12,14 @@ public sealed class OverlayWindow : Window
     private readonly Grid _root;
     private readonly Canvas _hintCanvas;
     private readonly TextBlock _statusText;
+    private OverlayViewState? _lastState;
+    private LabelAppearanceSettings? _lastAppearance;
+    private double _lastLabelScale = 1.0;
 
     public OverlayWindow()
     {
         SystemDecorations = SystemDecorations.None;
+        WindowStartupLocation = WindowStartupLocation.Manual;
         ShowInTaskbar = false;
         Topmost = true;
         CanResize = false;
@@ -55,7 +59,11 @@ public sealed class OverlayWindow : Window
         Content = _root;
 
         KeyDown += OnKeyDown;
-        Opened += (_, _) => MacAppInterop.MakeOverlayClickThrough(this);
+        Opened += (_, _) =>
+        {
+            MacAppInterop.MakeOverlayClickThrough(this);
+            ReapplyLastRender();
+        };
     }
 
     public event Action<char>? CharacterTyped;
@@ -68,14 +76,19 @@ public sealed class OverlayWindow : Window
 
     public void Render(OverlayViewState state, LabelAppearanceSettings appearance, double labelScale)
     {
+        _lastState = state;
+        _lastAppearance = appearance;
+        _lastLabelScale = labelScale;
+
+        var desktopScale = ResolveDesktopScale(state);
         var x = (int)Math.Round(state.TargetBounds.X);
         var y = (int)Math.Round(state.TargetBounds.Y);
         var width = Math.Max(1, (int)Math.Round(state.TargetBounds.Width));
         var height = Math.Max(1, (int)Math.Round(state.TargetBounds.Height));
 
         Position = new PixelPoint(x, y);
-        Width = width;
-        Height = height;
+        Width = width / desktopScale;
+        Height = height / desktopScale;
 
         _hintCanvas.Children.Clear();
 
@@ -88,8 +101,8 @@ public sealed class OverlayWindow : Window
 
         foreach (var hint in state.Hints)
         {
-            var left = hint.Bounds.X - state.TargetBounds.X;
-            var top = hint.Bounds.Y - state.TargetBounds.Y;
+            var left = (hint.Bounds.X - state.TargetBounds.X) / desktopScale;
+            var top = (hint.Bounds.Y - state.TargetBounds.Y) / desktopScale;
 
             var border = new Border
             {
@@ -119,6 +132,26 @@ public sealed class OverlayWindow : Window
         _statusText.Text =
             $"Input: {state.Input}  Action: {state.PendingAction}  Target: {state.Target}  Hints: {state.Hints.Count}\n" +
             "Keys: ESC cancel, Enter confirm, Backspace delete, その他の操作キーは設定値を参照";
+    }
+
+    private void ReapplyLastRender()
+    {
+        if (_lastState is null || _lastAppearance is null)
+        {
+            return;
+        }
+
+        Render(_lastState, _lastAppearance, _lastLabelScale);
+    }
+
+    private double ResolveDesktopScale(OverlayViewState state)
+    {
+        if (DesktopScaling > 0)
+        {
+            return Math.Max(1.0, DesktopScaling);
+        }
+
+        return Math.Max(1.0, state.TargetDisplay.DpiScale);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

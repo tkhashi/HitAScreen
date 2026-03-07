@@ -220,6 +220,7 @@ public partial class App : Application
         if (!_overlayWindow.IsVisible)
         {
             _overlayWindow.Show();
+            _overlayWindow.Render(state, settings.LabelAppearance, settings.LabelScale);
         }
 
     }
