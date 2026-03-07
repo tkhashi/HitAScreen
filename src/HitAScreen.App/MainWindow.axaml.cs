@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     private readonly ScreenSearchOrchestrator _orchestrator;
     private readonly IPermissionService _permissionService;
+    private readonly ILaunchAtLoginService _launchAtLoginService;
     private readonly IAppLogger _logger;
     private readonly Dictionary<string, HotkeyChord> _shortcutDraft = new(StringComparer.Ordinal);
 
@@ -43,10 +44,15 @@ public partial class MainWindow : Window
     private readonly TextBlock _inputMonitoringPermissionTextBlock;
     private readonly TextBlock _screenRecordingPermissionTextBlock;
 
-    public MainWindow(ScreenSearchOrchestrator orchestrator, IPermissionService permissionService, IAppLogger logger)
+    public MainWindow(
+        ScreenSearchOrchestrator orchestrator,
+        IPermissionService permissionService,
+        ILaunchAtLoginService launchAtLoginService,
+        IAppLogger logger)
     {
         _orchestrator = orchestrator;
         _permissionService = permissionService;
+        _launchAtLoginService = launchAtLoginService;
         _logger = logger;
 
         InitializeComponent();
@@ -142,7 +148,7 @@ public partial class MainWindow : Window
         _suppressFullscreenCheckBox.IsChecked = normalized.SuppressInFullscreen;
         _continuousModeCheckBox.IsChecked = normalized.ContinuousMode;
         _debugLoggingCheckBox.IsChecked = normalized.DebugLoggingEnabled;
-        _launchAtLoginCheckBox.IsChecked = normalized.LaunchAtLogin;
+        _launchAtLoginCheckBox.IsChecked = normalized.LaunchAtLogin || _launchAtLoginService.IsEnabled();
         _suppressedProcessTextBox.Text = string.Join(",", normalized.SuppressedProcesses);
     }
 
@@ -155,11 +161,24 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(diagnostics.Context?.ProcessName))
         {
             line += $" process={diagnostics.Context.ProcessName}";
+            line += $" pid={diagnostics.Context.ProcessId}";
+            line += $" windowId={diagnostics.Context.WindowId}";
+            line += $" title={TrimWithLimit(diagnostics.Context.WindowTitle, 18)}";
+            line += $" bounds=({diagnostics.Context.Bounds.X:0},{diagnostics.Context.Bounds.Y:0},{diagnostics.Context.Bounds.Width:0},{diagnostics.Context.Bounds.Height:0})";
+            line += $" display={diagnostics.Context.DisplayId ?? "-"}";
+            if (!string.IsNullOrWhiteSpace(diagnostics.Context.FallbackReason))
+            {
+                line += $" fallback={diagnostics.Context.FallbackReason}";
+            }
         }
 
         if (diagnostics.Permissions is not null)
         {
             line += $" perms(ax={diagnostics.Permissions.AccessibilityGranted},input={diagnostics.Permissions.InputMonitoringGranted},screen={diagnostics.Permissions.ScreenRecordingGranted})";
+            if (!string.IsNullOrWhiteSpace(diagnostics.Permissions.Note))
+            {
+                line += $" perm-note={diagnostics.Permissions.Note}";
+            }
         }
 
         _diagnosticsTextBox.Text = string.Concat(line, Environment.NewLine, _diagnosticsTextBox.Text ?? string.Empty);
@@ -217,8 +236,30 @@ public partial class MainWindow : Window
                 SuppressedProcesses = suppressed
             };
 
+            var conflicts = DetectShortcutConflicts(settings);
+            if (conflicts.Count > 0)
+            {
+                _statusTextBlock.Text = "競合を検出: " + string.Join(" / ", conflicts);
+                return;
+            }
+
             await _orchestrator.UpdateSettingsAsync(settings);
-            _statusTextBlock.Text = "Settings saved.";
+
+            var messages = new List<string> { "Settings saved." };
+            var hotkeyResult = _orchestrator.LastHotkeyRegistrationResult;
+            if (!hotkeyResult.Succeeded)
+            {
+                messages.Add("起動ホットキー登録失敗: " + (hotkeyResult.Reason ?? "unknown"));
+            }
+
+            if (!_launchAtLoginService.SetEnabled(settings.LaunchAtLogin, out var launchError))
+            {
+                messages.Add(string.IsNullOrWhiteSpace(launchError)
+                    ? "自動起動設定の更新に失敗しました。"
+                    : launchError);
+            }
+
+            _statusTextBlock.Text = string.Join(" ", messages);
             RefreshPermissionStatus();
         }
         catch (Exception ex)
@@ -303,6 +344,70 @@ public partial class MainWindow : Window
         }
 
         return Math.Clamp(parsed, min, max);
+    }
+
+    private static string TrimWithLimit(string value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength] + "...";
+    }
+
+    private static List<string> DetectShortcutConflicts(UserSettings settings)
+    {
+        var conflicts = new List<string>();
+        var byChord = new Dictionary<(int KeyCode, bool Cmd, bool Ctrl, bool Opt, bool Shift), List<string>>();
+
+        AddHotkey("起動ホットキー", settings.Hotkey);
+        AddHotkey("モニタ左切替", settings.OverlayHotkeys.SwitchMonitorLeft);
+        AddHotkey("モニタ右切替", settings.OverlayHotkeys.SwitchMonitorRight);
+        AddHotkey("再解析", settings.OverlayHotkeys.Reanalyze);
+        AddHotkey("左クリック", settings.OverlayHotkeys.ActionLeftClick);
+        AddHotkey("右クリック", settings.OverlayHotkeys.ActionRightClick);
+        AddHotkey("ダブルクリック", settings.OverlayHotkeys.ActionDoubleClick);
+        AddHotkey("フォーカス", settings.OverlayHotkeys.ActionFocus);
+
+        foreach (var pair in byChord.Where(static pair => pair.Value.Count > 1))
+        {
+            conflicts.Add($"同一キー割り当て: {string.Join(" / ", pair.Value)}");
+        }
+
+        foreach (var (name, hotkey) in EnumerateHotkeys(settings))
+        {
+            if (hotkey.KeyCode is 53 or 51 or 36)
+            {
+                conflicts.Add($"{name} は固定キー(ESC/Backspace/Enter)と競合します。");
+            }
+        }
+
+        return conflicts;
+
+        void AddHotkey(string name, HotkeyChord hotkey)
+        {
+            var key = (hotkey.KeyCode, hotkey.Command, hotkey.Control, hotkey.Option, hotkey.Shift);
+            if (!byChord.TryGetValue(key, out var names))
+            {
+                names = [];
+                byChord[key] = names;
+            }
+
+            names.Add(name);
+        }
+    }
+
+    private static IEnumerable<(string Name, HotkeyChord Chord)> EnumerateHotkeys(UserSettings settings)
+    {
+        yield return ("起動ホットキー", settings.Hotkey);
+        yield return ("モニタ左切替", settings.OverlayHotkeys.SwitchMonitorLeft);
+        yield return ("モニタ右切替", settings.OverlayHotkeys.SwitchMonitorRight);
+        yield return ("再解析", settings.OverlayHotkeys.Reanalyze);
+        yield return ("左クリック", settings.OverlayHotkeys.ActionLeftClick);
+        yield return ("右クリック", settings.OverlayHotkeys.ActionRightClick);
+        yield return ("ダブルクリック", settings.OverlayHotkeys.ActionDoubleClick);
+        yield return ("フォーカス", settings.OverlayHotkeys.ActionFocus);
     }
 
     private string ResolveShortcutLabel(TextBox textBox)

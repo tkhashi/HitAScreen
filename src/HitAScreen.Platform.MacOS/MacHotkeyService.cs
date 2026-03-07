@@ -12,6 +12,8 @@ public sealed class MacHotkeyService : IHotkeyService
     private IntPtr _runLoop;
     private IntPtr _tap;
     private IntPtr _source;
+    private ManualResetEventSlim? _registrationSignal;
+    private string? _registrationFailureReason;
     private bool _disposed;
     private HotkeyChord _hotkey;
     private DateTimeOffset _lastTriggeredAt = DateTimeOffset.MinValue;
@@ -34,11 +36,15 @@ public sealed class MacHotkeyService : IHotkeyService
             return new HotkeyRegistrationResult(false, "macOS only");
         }
 
+        ManualResetEventSlim registrationSignal;
         lock (_sync)
         {
             _hotkey = chord;
 
             UnregisterInternal();
+            _registrationFailureReason = "event tap の初期化に失敗しました。";
+            registrationSignal = new ManualResetEventSlim(false);
+            _registrationSignal = registrationSignal;
 
             _thread = new Thread(EventLoopMain)
             {
@@ -46,8 +52,32 @@ public sealed class MacHotkeyService : IHotkeyService
                 Name = "hitascreen-hotkey-listener"
             };
             _thread.Start();
+        }
 
-            return new HotkeyRegistrationResult(true);
+        if (!registrationSignal.Wait(TimeSpan.FromSeconds(1.5)))
+        {
+            lock (_sync)
+            {
+                _registrationFailureReason = "ホットキー登録の初期化がタイムアウトしました。";
+            }
+
+            Unregister();
+            registrationSignal.Dispose();
+            return new HotkeyRegistrationResult(false, "ホットキー登録がタイムアウトしました。");
+        }
+
+        lock (_sync)
+        {
+            _registrationSignal = null;
+            if (IsRegistered)
+            {
+                registrationSignal.Dispose();
+                return new HotkeyRegistrationResult(true);
+            }
+
+            var reason = _registrationFailureReason ?? "ホットキー登録に失敗しました。";
+            registrationSignal.Dispose();
+            return new HotkeyRegistrationResult(false, reason);
         }
     }
 
@@ -84,7 +114,7 @@ public sealed class MacHotkeyService : IHotkeyService
 
         if (tap == IntPtr.Zero)
         {
-            IsRegistered = false;
+            SignalRegistrationFailed("event tap を作成できませんでした（権限不足または競合の可能性があります）。");
             return;
         }
 
@@ -92,7 +122,7 @@ public sealed class MacHotkeyService : IHotkeyService
         if (source == IntPtr.Zero)
         {
             CFRelease(tap);
-            IsRegistered = false;
+            SignalRegistrationFailed("run loop source の作成に失敗しました。");
             return;
         }
 
@@ -101,7 +131,7 @@ public sealed class MacHotkeyService : IHotkeyService
         {
             CFRelease(source);
             CFRelease(tap);
-            IsRegistered = false;
+            SignalRegistrationFailed("run loop の初期化に失敗しました。");
             return;
         }
 
@@ -115,6 +145,7 @@ public sealed class MacHotkeyService : IHotkeyService
         CFRunLoopAddSource(runLoop, source, CFRunLoopModeDefault);
         CGEventTapEnable(tap, true);
         IsRegistered = true;
+        _registrationSignal?.Set();
 
         while (!_disposed)
         {
@@ -141,6 +172,7 @@ public sealed class MacHotkeyService : IHotkeyService
 
             _runLoop = IntPtr.Zero;
             IsRegistered = false;
+            _registrationFailureReason = "ホットキー登録が解除されました。";
         }
     }
 
@@ -158,6 +190,18 @@ public sealed class MacHotkeyService : IHotkeyService
 
         _thread = null;
         IsRegistered = false;
+        _registrationSignal?.Set();
+        _registrationSignal = null;
+    }
+
+    private void SignalRegistrationFailed(string reason)
+    {
+        lock (_sync)
+        {
+            IsRegistered = false;
+            _registrationFailureReason = reason;
+            _registrationSignal?.Set();
+        }
     }
 
     private IntPtr OnEvent(IntPtr proxy, uint eventTypeRaw, IntPtr cgEvent, IntPtr userInfo)

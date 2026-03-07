@@ -42,6 +42,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     private bool _disposed;
     private HotkeyChord? _registeredChord;
     private bool _suppressionActive;
+    private HotkeyRegistrationResult _lastHotkeyRegistrationResult = new(true);
 
     public ScreenSearchOrchestrator(
         IHotkeyService hotkeyService,
@@ -87,6 +88,17 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             lock (_sync)
             {
                 return _state;
+            }
+        }
+    }
+
+    public HotkeyRegistrationResult LastHotkeyRegistrationResult
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _lastHotkeyRegistrationResult;
             }
         }
     }
@@ -330,6 +342,10 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
             _registeredChord = null;
             _suppressionActive = true;
+            lock (_sync)
+            {
+                _lastHotkeyRegistrationResult = new HotkeyRegistrationResult(true, "suppressed");
+            }
             return;
         }
 
@@ -349,12 +365,20 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         var result = _hotkeyService.Register(_settings.Hotkey);
         if (!result.Succeeded)
         {
+            lock (_sync)
+            {
+                _lastHotkeyRegistrationResult = result;
+            }
             PublishDiagnostics(message: $"hotkey-register-failed: {result.Reason}", state: _state, permissions: _permissionService.GetCurrentStatus());
             _logger.Warn($"Failed to register hotkey: {result.Reason}");
             return;
         }
 
         _registeredChord = _settings.Hotkey;
+        lock (_sync)
+        {
+            _lastHotkeyRegistrationResult = result;
+        }
     }
 
     public void Dispose()

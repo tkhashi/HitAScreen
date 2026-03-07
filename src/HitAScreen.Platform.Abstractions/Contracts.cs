@@ -173,6 +173,12 @@ public interface ISettingsStore
     Task SaveAsync(UserSettings settings, CancellationToken cancellationToken = default);
 }
 
+public interface ILaunchAtLoginService
+{
+    bool IsEnabled();
+    bool SetEnabled(bool enabled, out string? errorMessage);
+}
+
 public interface IAppLogger
 {
     void Info(string message);
