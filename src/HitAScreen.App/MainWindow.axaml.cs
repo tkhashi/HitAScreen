@@ -273,7 +273,18 @@ public partial class MainWindow : Window
     {
         var snapshot = _permissionService.RequestMissingPermissions();
         UpdatePermissionStatus(snapshot);
-        _statusTextBlock.Text = $"Permissions ax={snapshot.AccessibilityGranted}, input={snapshot.InputMonitoringGranted}, screen={snapshot.ScreenRecordingGranted}";
+        var message = $"必須権限 ax={snapshot.AccessibilityGranted}, input={snapshot.InputMonitoringGranted}";
+        if (!snapshot.ScreenRecordingGranted)
+        {
+            message += " / Screen Recording は未許可でも動作可能";
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Note))
+        {
+            message += $" / {snapshot.Note}";
+        }
+
+        _statusTextBlock.Text = message;
     }
 
     private void RefreshPermissionStatus()
@@ -285,7 +296,12 @@ public partial class MainWindow : Window
     {
         _accessibilityPermissionTextBlock.Text = $"Accessibility: {(snapshot.AccessibilityGranted ? "許可済み" : "未許可")}";
         _inputMonitoringPermissionTextBlock.Text = $"Input Monitoring: {(snapshot.InputMonitoringGranted ? "許可済み" : "未許可")}";
-        _screenRecordingPermissionTextBlock.Text = $"Screen Recording: {(snapshot.ScreenRecordingGranted ? "許可済み" : "未許可")}";
+        _screenRecordingPermissionTextBlock.Text = $"Screen Recording (任意): {(snapshot.ScreenRecordingGranted ? "許可済み" : "未許可")}";
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Note))
+        {
+            _screenRecordingPermissionTextBlock.Text += $" - {snapshot.Note}";
+        }
     }
 
     private void OpenPermissionSettings(PermissionArea area)

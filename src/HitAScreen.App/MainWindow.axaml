@@ -94,7 +94,7 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Button Name="OpenInputMonitoringSettingsButton" Content="Input Monitoring を開く" />
-              <Button Name="OpenScreenRecordingSettingsButton" Content="Screen Recording を開く" />
+              <Button Name="OpenScreenRecordingSettingsButton" Content="Screen Recording を開く (任意)" />
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Spacing="8">
