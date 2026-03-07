@@ -19,6 +19,7 @@ public partial class App : Application
     private ScreenSearchOrchestrator? _orchestrator;
     private ConfigurableFileLogger? _logger;
     private IPermissionService? _permissionService;
+    private ILaunchAtLoginService? _launchAtLoginService;
     private IHotkeyService? _hotkeyService;
     private bool _isShuttingDown;
 
@@ -49,6 +50,7 @@ public partial class App : Application
     {
         _logger = new ConfigurableFileLogger(AppPaths.LogPath);
         _permissionService = OperatingSystem.IsMacOS() ? new MacPermissionService() : new NoopPermissionService();
+        _launchAtLoginService = OperatingSystem.IsMacOS() ? new MacLaunchAtLoginService() : new NoopLaunchAtLoginService();
 
         var hotkey = OperatingSystem.IsMacOS() ? new MacHotkeyService() as IHotkeyService : new NoopHotkeyService();
         var activeWindow = OperatingSystem.IsMacOS() ? new MacActiveWindowService() as IActiveWindowService : new NoopActiveWindowService();
@@ -85,12 +87,12 @@ public partial class App : Application
 
     private void InitializeWindows()
     {
-        if (_orchestrator is null || _permissionService is null || _logger is null)
+        if (_orchestrator is null || _permissionService is null || _launchAtLoginService is null || _logger is null)
         {
             throw new InvalidOperationException("Services are not initialized.");
         }
 
-        _mainWindow = new MainWindow(_orchestrator, _permissionService, _logger)
+        _mainWindow = new MainWindow(_orchestrator, _permissionService, _launchAtLoginService, _logger)
         {
             Title = "HitAScreen Control Panel"
         };
@@ -388,6 +390,17 @@ public partial class App : Application
         public bool OpenSystemSettings(PermissionArea area, out string? errorMessage)
         {
             errorMessage = $"{area} の設定画面オープンはサポート外です。";
+            return false;
+        }
+    }
+
+    private sealed class NoopLaunchAtLoginService : ILaunchAtLoginService
+    {
+        public bool IsEnabled() => false;
+
+        public bool SetEnabled(bool enabled, out string? errorMessage)
+        {
+            errorMessage = "自動起動設定はサポート外です。";
             return false;
         }
     }
