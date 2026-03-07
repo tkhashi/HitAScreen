@@ -13,7 +13,7 @@ jobs:
     runs-on: macos-14
     env:
       DOTNET_VERSION: "10.0.x"
-      APP_NAME: "HitAScreen"
+      APP_NAME: "Hit A Screen"
       EXECUTABLE_NAME: "HitAScreen.App"
       PUBLISH_DIR: "artifacts/publish/osx-arm64"
       RELEASE_DIR: "artifacts/release"

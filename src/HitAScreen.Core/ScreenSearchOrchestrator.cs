@@ -182,6 +182,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _state = SessionState.OverlayActive;
         }
 
+        _hotkeyService.SuppressKeyPropagation = true;
+
         totalStopwatch.Stop();
 
         lock (_sync)
@@ -394,6 +396,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         _suppressionTask?.Wait(TimeSpan.FromSeconds(1));
 
         _hotkeyService.HotkeyPressed -= OnHotkeyPressed;
+        _hotkeyService.SuppressKeyPropagation = false;
         _hotkeyService.Unregister();
         _hotkeyService.Dispose();
         _suppressionCts?.Dispose();
@@ -667,6 +670,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _state = SessionState.Idle;
         }
 
+        _hotkeyService.SuppressKeyPropagation = false;
+
         OverlayStateChanged?.Invoke(null);
         PublishDiagnostics(message: "session-ended", state: SessionState.Idle, permissions: _permissionService.GetCurrentStatus());
     }
@@ -733,6 +738,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         var state = new OverlayViewState(
             session.SessionId,
             session.TargetBounds,
+            session.Display.Bounds,
             session.Display,
             session.Input,
             session.PendingAction,

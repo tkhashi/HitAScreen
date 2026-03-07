@@ -131,6 +131,7 @@ public sealed record UserSettings
 public interface IHotkeyService : IDisposable
 {
     bool IsRegistered { get; }
+    bool SuppressKeyPropagation { get; set; }
     event Action? HotkeyPressed;
     event Action<GlobalKeyEvent>? KeyPressed;
     HotkeyRegistrationResult Register(HotkeyChord chord);
@@ -206,6 +207,7 @@ public sealed record OverlayHint(
 public sealed record OverlayViewState(
     Guid SessionId,
     ScreenRect TargetBounds,
+    ScreenRect OverlayBounds,
     DisplayInfo TargetDisplay,
     string Input,
     UiActionType PendingAction,

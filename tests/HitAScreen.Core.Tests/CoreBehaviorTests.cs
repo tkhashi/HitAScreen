@@ -190,6 +190,7 @@ public sealed class CoreBehaviorTests
     private sealed class FakeHotkeyService : IHotkeyService
     {
         public bool IsRegistered { get; private set; }
+        public bool SuppressKeyPropagation { get; set; }
         public event Action? HotkeyPressed;
         public event Action<GlobalKeyEvent>? KeyPressed;
 

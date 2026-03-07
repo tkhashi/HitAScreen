@@ -25,6 +25,7 @@ public sealed class MacHotkeyService : IHotkeyService
     }
 
     public bool IsRegistered { get; private set; }
+    public bool SuppressKeyPropagation { get; set; }
 
     public event Action? HotkeyPressed;
     public event Action<GlobalKeyEvent>? KeyPressed;
@@ -107,7 +108,7 @@ public sealed class MacHotkeyService : IHotkeyService
         var tap = CGEventTapCreate(
             CGEventTapLocation.Session,
             CGEventTapPlacement.HeadInsert,
-            CGEventTapOptions.ListenOnly,
+            CGEventTapOptions.Default,
             mask,
             _callback,
             IntPtr.Zero);
@@ -215,11 +216,15 @@ public sealed class MacHotkeyService : IHotkeyService
         var flags = CGEventGetFlags(cgEvent);
 
         var isHotkey = IsMatch(keyCode, flags, _hotkey);
-        if (isHotkey && DateTimeOffset.UtcNow - _lastTriggeredAt > TimeSpan.FromMilliseconds(250))
+        if (isHotkey)
         {
-            _lastTriggeredAt = DateTimeOffset.UtcNow;
-            HotkeyPressed?.Invoke();
-            return cgEvent;
+            if (DateTimeOffset.UtcNow - _lastTriggeredAt > TimeSpan.FromMilliseconds(250))
+            {
+                _lastTriggeredAt = DateTimeOffset.UtcNow;
+                HotkeyPressed?.Invoke();
+            }
+
+            return IntPtr.Zero;
         }
 
         var evt = new GlobalKeyEvent(
@@ -230,7 +235,7 @@ public sealed class MacHotkeyService : IHotkeyService
             Shift: (flags & (ulong)ModifierFlag.Shift) != 0);
         KeyPressed?.Invoke(evt);
 
-        return cgEvent;
+        return SuppressKeyPropagation ? IntPtr.Zero : cgEvent;
     }
 
     private static bool IsMatch(int keyCode, ulong flags, HotkeyChord chord)
@@ -310,6 +315,7 @@ public sealed class MacHotkeyService : IHotkeyService
 
     private enum CGEventTapOptions : uint
     {
+        Default = 0,
         ListenOnly = 1
     }
 

@@ -94,7 +94,8 @@ public partial class App : Application
 
         _mainWindow = new MainWindow(_orchestrator, _permissionService, _launchAtLoginService, _logger)
         {
-            Title = "HitAScreen Control Panel"
+            Title = "Hit A Screen Control Panel",
+            Icon = LoadTrayIcon()
         };
 
         _mainWindow.Closing += (_, e) =>
@@ -123,7 +124,7 @@ public partial class App : Application
         _trayIcon = new TrayIcon
         {
             Icon = LoadTrayIcon(),
-            ToolTipText = "HitAScreen",
+            ToolTipText = "Hit A Screen",
             IsVisible = true,
             Menu = BuildTrayMenu(desktop)
         };
@@ -242,7 +243,7 @@ public partial class App : Application
 
     private static WindowIcon LoadTrayIcon()
     {
-        using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/tray.png"));
+        using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/hit-a-screen-icon.png"));
         return new WindowIcon(stream);
     }
 
@@ -338,6 +339,7 @@ public partial class App : Application
     private sealed class NoopHotkeyService : IHotkeyService
     {
         public bool IsRegistered { get; private set; }
+        public bool SuppressKeyPropagation { get; set; }
         public event Action? HotkeyPressed;
         public event Action<GlobalKeyEvent>? KeyPressed;
         public HotkeyRegistrationResult Register(HotkeyChord chord)

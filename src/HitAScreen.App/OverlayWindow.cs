@@ -81,10 +81,10 @@ public sealed class OverlayWindow : Window
         _lastLabelScale = labelScale;
 
         var desktopScale = ResolveDesktopScale(state);
-        var x = (int)Math.Round(state.TargetBounds.X);
-        var y = (int)Math.Round(state.TargetBounds.Y);
-        var width = Math.Max(1, (int)Math.Round(state.TargetBounds.Width));
-        var height = Math.Max(1, (int)Math.Round(state.TargetBounds.Height));
+        var x = (int)Math.Round(state.OverlayBounds.X);
+        var y = (int)Math.Round(state.OverlayBounds.Y);
+        var width = Math.Max(1, (int)Math.Round(state.OverlayBounds.Width));
+        var height = Math.Max(1, (int)Math.Round(state.OverlayBounds.Height));
 
         Position = new PixelPoint(x, y);
         Width = width / desktopScale;
@@ -101,8 +101,8 @@ public sealed class OverlayWindow : Window
 
         foreach (var hint in state.Hints)
         {
-            var left = (hint.Bounds.X - state.TargetBounds.X) / desktopScale;
-            var top = (hint.Bounds.Y - state.TargetBounds.Y) / desktopScale;
+            var left = (hint.Bounds.X - state.OverlayBounds.X) / desktopScale;
+            var top = (hint.Bounds.Y - state.OverlayBounds.Y) / desktopScale;
 
             var border = new Border
             {

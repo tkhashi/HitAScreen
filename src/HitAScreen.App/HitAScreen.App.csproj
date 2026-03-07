@@ -2,6 +2,10 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationTitle>Hit A Screen</ApplicationTitle>
+    <AssemblyTitle>Hit A Screen</AssemblyTitle>
+    <Product>Hit A Screen</Product>
+    <Description>Hit A Screen</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +21,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
+    <AvaloniaResource Include="../../hit-a-screen-icon.png" Link="Assets/hit-a-screen-icon.png" />
     <ProjectReference Include="../HitAScreen.Core/HitAScreen.Core.csproj" />
     <ProjectReference Include="../HitAScreen.Platform.Abstractions/HitAScreen.Platform.Abstractions.csproj" />
     <ProjectReference Include="../HitAScreen.Platform.MacOS/HitAScreen.Platform.MacOS.csproj" />
