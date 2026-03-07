@@ -39,6 +39,7 @@ public sealed class OverlayWindow : Window
             FontSize = 14,
             Margin = new Thickness(12),
             TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Bottom,
             IsHitTestVisible = false
         };
 
@@ -67,14 +68,15 @@ public sealed class OverlayWindow : Window
 
     public void Render(OverlayViewState state, LabelAppearanceSettings appearance, double labelScale)
     {
+        var displayScale = Math.Max(1.0, state.TargetDisplay.DpiScale);
         var x = (int)Math.Round(state.TargetBounds.X);
         var y = (int)Math.Round(state.TargetBounds.Y);
         var width = Math.Max(1, (int)Math.Round(state.TargetBounds.Width));
         var height = Math.Max(1, (int)Math.Round(state.TargetBounds.Height));
 
         Position = new PixelPoint(x, y);
-        Width = width;
-        Height = height;
+        Width = width / displayScale;
+        Height = height / displayScale;
 
         _hintCanvas.Children.Clear();
 
@@ -87,8 +89,8 @@ public sealed class OverlayWindow : Window
 
         foreach (var hint in state.Hints)
         {
-            var left = hint.Bounds.X - state.TargetBounds.X;
-            var top = hint.Bounds.Y - state.TargetBounds.Y;
+            var left = (hint.Bounds.X - state.TargetBounds.X) / displayScale;
+            var top = (hint.Bounds.Y - state.TargetBounds.Y) / displayScale;
 
             var border = new Border
             {

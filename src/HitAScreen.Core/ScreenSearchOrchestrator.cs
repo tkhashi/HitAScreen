@@ -162,7 +162,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         }
 
         var analyzeStopwatch = Stopwatch.StartNew();
-        var (display, targetBounds, bindings, excludedCount) = Analyze(context, _settings.DefaultAnalysisTarget);
+        var (display, targetBounds, bindings, excludedCount, overlapPrunedCount) = Analyze(context, _settings.DefaultAnalysisTarget);
         analyzeStopwatch.Stop();
 
         lock (_sync)
@@ -194,7 +194,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         PublishOverlay();
         PublishDiagnostics(
-            message: $"session-started ax-role-filtered={excludedCount}",
+            message: $"session-started ax-role-filtered={excludedCount} overlap-pruned={overlapPrunedCount}",
             state: SessionState.OverlayActive,
             captureMs: captureStopwatch.ElapsedMilliseconds,
             analyzeMs: analyzeStopwatch.ElapsedMilliseconds,
@@ -317,7 +317,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
     public void ConfirmInput()
     {
-        TryExecuteFromInput(forceExecutePrefixMatch: true);
+        TryExecuteFromInput();
     }
 
     public async Task RefreshHotkeyRegistrationAsync(CancellationToken cancellationToken = default)
@@ -413,7 +413,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         }
     }
 
-    private (DisplayInfo display, ScreenRect targetBounds, List<HintBinding> bindings, int excludedCount) Analyze(ActiveWindowContext context, AnalysisTarget target)
+    private (DisplayInfo display, ScreenRect targetBounds, List<HintBinding> bindings, int excludedCount, int overlapPrunedCount) Analyze(ActiveWindowContext context, AnalysisTarget target)
     {
         var displays = _displayService.GetDisplays();
         var targetDisplay = context.DisplayId is not null
@@ -429,10 +429,15 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         var candidates = FilterAndSortCandidates(
             _accessibilityElementProvider.GetActionableElements(analysis),
             targetBounds,
-            out var excludedCount);
+            out var excludedCount,
+            out var overlapPrunedCount);
         if (excludedCount > 0)
         {
             _logger.Info($"AX role filter applied. excluded={excludedCount}, roles={string.Join(",", _settings.ExcludedAxRoles)}");
+        }
+        if (overlapPrunedCount > 0)
+        {
+            _logger.Info($"Overlap pruning applied. pruned={overlapPrunedCount}");
         }
 
         var labels = _labelGenerator.Generate(candidates.Count, _settings.LabelCharacterSet);
@@ -440,7 +445,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             .Select((candidate, index) => new HintBinding(labels[index], candidate))
             .ToList();
 
-        return (targetDisplay, targetBounds, bindings, excludedCount);
+        return (targetDisplay, targetBounds, bindings, excludedCount, overlapPrunedCount);
     }
 
     private void ReanalyzeCurrentSession()
@@ -462,10 +467,15 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         var candidates = FilterAndSortCandidates(
             _accessibilityElementProvider.GetActionableElements(analysis),
             session.TargetBounds,
-            out var excludedCount);
+            out var excludedCount,
+            out var overlapPrunedCount);
         if (excludedCount > 0)
         {
             _logger.Info($"AX role filter applied. excluded={excludedCount}, roles={string.Join(",", _settings.ExcludedAxRoles)}");
+        }
+        if (overlapPrunedCount > 0)
+        {
+            _logger.Info($"Overlap pruning applied. pruned={overlapPrunedCount}");
         }
 
         var labels = _labelGenerator.Generate(candidates.Count, _settings.LabelCharacterSet);
@@ -486,7 +496,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         PublishOverlay();
         PublishDiagnostics(
-            message: $"session-reanalyzed ax-role-filtered={excludedCount}",
+            message: $"session-reanalyzed ax-role-filtered={excludedCount} overlap-pruned={overlapPrunedCount}",
             state: SessionState.OverlayActive,
             analyzeMs: analyzeStopwatch.ElapsedMilliseconds,
             candidateCount: candidates.Count,
@@ -497,7 +507,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     private List<UiCandidate> FilterAndSortCandidates(
         IReadOnlyList<UiCandidate> candidates,
         ScreenRect targetBounds,
-        out int excludedCount)
+        out int excludedCount,
+        out int overlapPrunedCount)
     {
         var excludedRoles = _settings.ExcludedAxRoles
             .Where(static role => !string.IsNullOrWhiteSpace(role))
@@ -508,17 +519,62 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             .Where(candidate => candidate.Bounds.Intersects(targetBounds))
             .ToList();
 
-        var filtered = inBounds
+        var roleFiltered = inBounds
             .Where(candidate => excludedRoles.Count == 0 || !excludedRoles.Contains(candidate.Role))
+            .ToList();
+
+        excludedCount = inBounds.Count - roleFiltered.Count;
+
+        var pruned = PruneOverlappingCandidates(roleFiltered);
+        overlapPrunedCount = roleFiltered.Count - pruned.Count;
+
+        return pruned
             .OrderBy(candidate => candidate.Bounds.Y)
             .ThenBy(candidate => candidate.Bounds.X)
             .ToList();
-
-        excludedCount = inBounds.Count - filtered.Count;
-        return filtered;
     }
 
-    private void TryExecuteFromInput(bool forceExecutePrefixMatch = false)
+    private static List<UiCandidate> PruneOverlappingCandidates(IReadOnlyList<UiCandidate> candidates)
+    {
+        var kept = new List<UiCandidate>();
+        foreach (var candidate in candidates.OrderBy(candidate => CandidateArea(candidate.Bounds)))
+        {
+            var hasParentChildOverlap = kept.Any(existing => HasParentChildOverlap(candidate.Bounds, existing.Bounds));
+            if (!hasParentChildOverlap)
+            {
+                kept.Add(candidate);
+            }
+        }
+
+        return kept;
+    }
+
+    private static bool HasParentChildOverlap(ScreenRect left, ScreenRect right)
+    {
+        var oneContainsAnother = Contains(left, right) || Contains(right, left);
+        if (!oneContainsAnother)
+        {
+            return false;
+        }
+
+        var intersectionWidth = Math.Max(0, Math.Min(left.Right, right.Right) - Math.Max(left.X, right.X));
+        var intersectionHeight = Math.Max(0, Math.Min(left.Bottom, right.Bottom) - Math.Max(left.Y, right.Y));
+        var intersectionArea = intersectionWidth * intersectionHeight;
+        var minArea = Math.Max(1, Math.Min(CandidateArea(left), CandidateArea(right)));
+        return intersectionArea / minArea >= 0.55;
+    }
+
+    private static bool Contains(ScreenRect outer, ScreenRect inner)
+    {
+        return inner.X >= outer.X
+            && inner.Y >= outer.Y
+            && inner.Right <= outer.Right
+            && inner.Bottom <= outer.Bottom;
+    }
+
+    private static double CandidateArea(ScreenRect bounds) => Math.Max(1, bounds.Width * bounds.Height);
+
+    private void TryExecuteFromInput()
     {
         ActiveSession? session;
         lock (_sync)
@@ -537,20 +593,6 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         if (exactMatch is not null)
         {
             ExecuteBinding(exactMatch);
-            return;
-        }
-
-        if (!forceExecutePrefixMatch)
-        {
-            return;
-        }
-
-        var prefixMatches = session.Bindings.Where(binding =>
-            binding.Label.StartsWith(session.Input, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        if (prefixMatches.Count == 1)
-        {
-            ExecuteBinding(prefixMatches[0]);
         }
     }
 

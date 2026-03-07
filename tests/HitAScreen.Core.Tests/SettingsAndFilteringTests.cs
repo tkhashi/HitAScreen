@@ -133,6 +133,31 @@ public sealed class SettingsAndFilteringTests
         Assert.True(orchestrator.LastHotkeyRegistrationResult.Succeeded);
     }
 
+    [Fact]
+    public async Task Orchestrator_PrunesParentChildOverlapCandidates()
+    {
+        var hotkey = new RecordingHotkeyService();
+        var activeWindow = new StaticActiveWindowService();
+        var provider = new StaticAccessibilityProvider
+        {
+            Candidates =
+            [
+                new UiCandidate("parent", new ScreenRect(100, 100, 300, 200), "AXButton", null, "parent", "AXPress", 0.9, CandidateSource.Accessibility),
+                new UiCandidate("child", new ScreenRect(120, 120, 80, 30), "AXButton", null, "child", "AXPress", 0.9, CandidateSource.Accessibility)
+            ]
+        };
+
+        var orchestrator = BuildOrchestrator(hotkey, activeWindow, provider);
+        OverlayViewState? state = null;
+        orchestrator.OverlayStateChanged += value => state = value;
+
+        await orchestrator.InitializeAsync();
+        orchestrator.StartSession();
+
+        Assert.NotNull(state);
+        Assert.Single(state!.Hints);
+    }
+
     private static ScreenSearchOrchestrator BuildOrchestrator(
         RecordingHotkeyService hotkey,
         StaticActiveWindowService activeWindow,
