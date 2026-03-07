@@ -13,16 +13,6 @@ namespace HitAScreen.App;
 
 public partial class App : Application
 {
-    private static readonly Dictionary<int, char> KeyCodeToCharacter = new()
-    {
-        [0] = 'A', [1] = 'S', [2] = 'D', [3] = 'F', [4] = 'H', [5] = 'G', [6] = 'Z', [7] = 'X',
-        [8] = 'C', [9] = 'V', [11] = 'B', [12] = 'Q', [13] = 'W', [14] = 'E', [15] = 'R',
-        [16] = 'Y', [17] = 'T', [31] = 'O', [32] = 'U', [34] = 'I', [35] = 'P', [37] = 'L',
-        [38] = 'J', [40] = 'K', [45] = 'N', [46] = 'M',
-        [18] = '1', [19] = '2', [20] = '3', [21] = '4', [22] = '6', [23] = '5',
-        [25] = '9', [26] = '7', [28] = '8', [29] = '0'
-    };
-
     private TrayIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private OverlayWindow? _overlayWindow;
@@ -223,8 +213,8 @@ public partial class App : Application
             return;
         }
 
-        var labelScale = _orchestrator?.Settings.LabelScale ?? 1.0;
-        _overlayWindow.Render(state, labelScale);
+        var settings = UserSettingsNormalizer.Normalize(_orchestrator?.Settings);
+        _overlayWindow.Render(state, settings.LabelAppearance, settings.LabelScale);
         if (!_overlayWindow.IsVisible)
         {
             _overlayWindow.Show();
@@ -285,27 +275,50 @@ public partial class App : Application
             case 36: // Enter
                 Dispatcher.UIThread.Post(orchestrator.ConfirmInput);
                 return;
-            case 123: // Left
-                Dispatcher.UIThread.Post(() => orchestrator.SwitchMonitor(MonitorSwitchDirection.Left));
-                return;
-            case 124: // Right
-                Dispatcher.UIThread.Post(() => orchestrator.SwitchMonitor(MonitorSwitchDirection.Right));
-                return;
-            case 48: // Tab
-                Dispatcher.UIThread.Post(orchestrator.Reanalyze);
-                return;
-            case 122: // F1
-                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.LeftClick));
-                return;
-            case 120: // F2
-                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.RightClick));
-                return;
-            case 99: // F3
-                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.DoubleClick));
-                return;
-            case 118: // F4
-                Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.Focus));
-                return;
+        }
+
+        var settings = UserSettingsNormalizer.Normalize(orchestrator.Settings);
+        var shortcuts = settings.OverlayHotkeys;
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.SwitchMonitorLeft))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.SwitchMonitor(MonitorSwitchDirection.Left));
+            return;
+        }
+
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.SwitchMonitorRight))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.SwitchMonitor(MonitorSwitchDirection.Right));
+            return;
+        }
+
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.Reanalyze))
+        {
+            Dispatcher.UIThread.Post(orchestrator.Reanalyze);
+            return;
+        }
+
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.ActionLeftClick))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.LeftClick));
+            return;
+        }
+
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.ActionRightClick))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.RightClick));
+            return;
+        }
+
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.ActionDoubleClick))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.DoubleClick));
+            return;
+        }
+
+        if (KeyBindingCatalog.IsChordMatch(key, shortcuts.ActionFocus))
+        {
+            Dispatcher.UIThread.Post(() => orchestrator.SetPendingAction(UiActionType.Focus));
+            return;
         }
 
         if (key.Command || key.Control || key.Option)
@@ -313,7 +326,7 @@ public partial class App : Application
             return;
         }
 
-        if (KeyCodeToCharacter.TryGetValue(key.KeyCode, out var ch))
+        if (KeyBindingCatalog.TryMapInputCharacter(key.KeyCode, out var ch))
         {
             Dispatcher.UIThread.Post(() => orchestrator.HandleCharacter(ch));
         }
@@ -371,5 +384,11 @@ public partial class App : Application
         public PermissionSnapshot GetCurrentStatus() => new(false, false, false, "unsupported platform");
 
         public PermissionSnapshot RequestMissingPermissions() => GetCurrentStatus();
+
+        public bool OpenSystemSettings(PermissionArea area, out string? errorMessage)
+        {
+            errorMessage = $"{area} の設定画面オープンはサポート外です。";
+            return false;
+        }
     }
 }

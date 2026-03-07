@@ -93,7 +93,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        _settings = await _settingsStore.LoadAsync(cancellationToken);
+        var loaded = await _settingsStore.LoadAsync(cancellationToken);
+        _settings = UserSettingsNormalizer.Normalize(loaded);
         SettingsChanged?.Invoke(_settings);
 
         PublishDiagnostics(message: "orchestrator initialized", state: SessionState.Idle, permissions: _permissionService.GetCurrentStatus());
@@ -104,13 +105,14 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
     public async Task UpdateSettingsAsync(UserSettings settings, CancellationToken cancellationToken = default)
     {
+        var normalized = UserSettingsNormalizer.Normalize(settings);
         lock (_sync)
         {
-            _settings = settings;
+            _settings = normalized;
         }
 
-        await _settingsStore.SaveAsync(settings, cancellationToken);
-        SettingsChanged?.Invoke(settings);
+        await _settingsStore.SaveAsync(normalized, cancellationToken);
+        SettingsChanged?.Invoke(normalized);
         await RefreshHotkeyRegistrationAsync(cancellationToken);
     }
 
@@ -148,7 +150,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         }
 
         var analyzeStopwatch = Stopwatch.StartNew();
-        var (display, targetBounds, bindings) = Analyze(context, _settings.DefaultAnalysisTarget);
+        var (display, targetBounds, bindings, excludedCount) = Analyze(context, _settings.DefaultAnalysisTarget);
         analyzeStopwatch.Stop();
 
         lock (_sync)
@@ -180,7 +182,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         PublishOverlay();
         PublishDiagnostics(
-            message: "session-started",
+            message: $"session-started ax-role-filtered={excludedCount}",
             state: SessionState.OverlayActive,
             captureMs: captureStopwatch.ElapsedMilliseconds,
             analyzeMs: analyzeStopwatch.ElapsedMilliseconds,
@@ -387,7 +389,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         }
     }
 
-    private (DisplayInfo display, ScreenRect targetBounds, List<HintBinding> bindings) Analyze(ActiveWindowContext context, AnalysisTarget target)
+    private (DisplayInfo display, ScreenRect targetBounds, List<HintBinding> bindings, int excludedCount) Analyze(ActiveWindowContext context, AnalysisTarget target)
     {
         var displays = _displayService.GetDisplays();
         var targetDisplay = context.DisplayId is not null
@@ -400,18 +402,21 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         var targetBounds = target == AnalysisTarget.ActiveWindow ? context.Bounds : targetDisplay.Bounds;
 
         var analysis = new AnalysisContext(context, targetDisplay, target, targetBounds);
-        var candidates = _accessibilityElementProvider.GetActionableElements(analysis)
-            .Where(candidate => candidate.Bounds.Intersects(targetBounds))
-            .OrderBy(candidate => candidate.Bounds.Y)
-            .ThenBy(candidate => candidate.Bounds.X)
-            .ToList();
+        var candidates = FilterAndSortCandidates(
+            _accessibilityElementProvider.GetActionableElements(analysis),
+            targetBounds,
+            out var excludedCount);
+        if (excludedCount > 0)
+        {
+            _logger.Info($"AX role filter applied. excluded={excludedCount}, roles={string.Join(",", _settings.ExcludedAxRoles)}");
+        }
 
         var labels = _labelGenerator.Generate(candidates.Count, _settings.LabelCharacterSet);
         var bindings = candidates
             .Select((candidate, index) => new HintBinding(labels[index], candidate))
             .ToList();
 
-        return (targetDisplay, targetBounds, bindings);
+        return (targetDisplay, targetBounds, bindings, excludedCount);
     }
 
     private void ReanalyzeCurrentSession()
@@ -430,11 +435,14 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         var analyzeStopwatch = Stopwatch.StartNew();
         var analysis = new AnalysisContext(session.Context, session.Display, session.Target, session.TargetBounds);
-        var candidates = _accessibilityElementProvider.GetActionableElements(analysis)
-            .Where(candidate => candidate.Bounds.Intersects(session.TargetBounds))
-            .OrderBy(candidate => candidate.Bounds.Y)
-            .ThenBy(candidate => candidate.Bounds.X)
-            .ToList();
+        var candidates = FilterAndSortCandidates(
+            _accessibilityElementProvider.GetActionableElements(analysis),
+            session.TargetBounds,
+            out var excludedCount);
+        if (excludedCount > 0)
+        {
+            _logger.Info($"AX role filter applied. excluded={excludedCount}, roles={string.Join(",", _settings.ExcludedAxRoles)}");
+        }
 
         var labels = _labelGenerator.Generate(candidates.Count, _settings.LabelCharacterSet);
         analyzeStopwatch.Stop();
@@ -454,12 +462,36 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         PublishOverlay();
         PublishDiagnostics(
-            message: "session-reanalyzed",
+            message: $"session-reanalyzed ax-role-filtered={excludedCount}",
             state: SessionState.OverlayActive,
             analyzeMs: analyzeStopwatch.ElapsedMilliseconds,
             candidateCount: candidates.Count,
             context: session.Context,
             permissions: _permissionService.GetCurrentStatus());
+    }
+
+    private List<UiCandidate> FilterAndSortCandidates(
+        IReadOnlyList<UiCandidate> candidates,
+        ScreenRect targetBounds,
+        out int excludedCount)
+    {
+        var excludedRoles = _settings.ExcludedAxRoles
+            .Where(static role => !string.IsNullOrWhiteSpace(role))
+            .Select(static role => role.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+
+        var inBounds = candidates
+            .Where(candidate => candidate.Bounds.Intersects(targetBounds))
+            .ToList();
+
+        var filtered = inBounds
+            .Where(candidate => excludedRoles.Count == 0 || !excludedRoles.Contains(candidate.Role))
+            .OrderBy(candidate => candidate.Bounds.Y)
+            .ThenBy(candidate => candidate.Bounds.X)
+            .ToList();
+
+        excludedCount = inBounds.Count - filtered.Count;
+        return filtered;
     }
 
     private void TryExecuteFromInput(bool forceExecutePrefixMatch = false)

@@ -109,7 +109,7 @@ public sealed class CoreBehaviorTests
         SessionDiagnostics? sessionStart = null;
         orchestrator.DiagnosticsChanged += diagnostics =>
         {
-            if (diagnostics.Message == "session-started")
+            if (diagnostics.Message?.StartsWith("session-started", StringComparison.Ordinal) == true)
             {
                 sessionStart = diagnostics;
             }
@@ -180,6 +180,12 @@ public sealed class CoreBehaviorTests
         public PermissionSnapshot GetCurrentStatus() => new(true, true, true);
 
         public PermissionSnapshot RequestMissingPermissions() => new(true, true, true);
+
+        public bool OpenSystemSettings(PermissionArea area, out string? errorMessage)
+        {
+            errorMessage = null;
+            return true;
+        }
     }
 
     private sealed class InMemorySettingsStore : ISettingsStore
