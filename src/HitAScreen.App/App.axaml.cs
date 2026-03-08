@@ -5,10 +5,10 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using System.Diagnostics;
+using HitAScreen.App.Composition;
 using HitAScreen.Core;
 using HitAScreen.Infrastructure;
 using HitAScreen.Platform.Abstractions;
-using HitAScreen.Platform.MacOS;
 
 namespace HitAScreen.App;
 
@@ -51,23 +51,19 @@ public partial class App : Application
     private void InitializeServices()
     {
         _logger = new ConfigurableFileLogger(AppPaths.LogPath);
-        _permissionService = OperatingSystem.IsMacOS() ? new MacPermissionService() : new NoopPermissionService();
-        _launchAtLoginService = OperatingSystem.IsMacOS() ? new MacLaunchAtLoginService() : new NoopLaunchAtLoginService();
+        var platform = PlatformModuleFactory.Create();
+        _permissionService = platform.PermissionService;
+        _launchAtLoginService = platform.LaunchAtLoginService;
 
-        var hotkey = OperatingSystem.IsMacOS() ? new MacHotkeyService() as IHotkeyService : new NoopHotkeyService();
-        var activeWindow = OperatingSystem.IsMacOS() ? new MacActiveWindowService() as IActiveWindowService : new NoopActiveWindowService();
-        var elementProvider = OperatingSystem.IsMacOS() ? new MacAccessibilityElementProvider() as IAccessibilityElementProvider : new NoopAccessibilityElementProvider();
-        var input = OperatingSystem.IsMacOS() ? new MacInputInjectionService() as IInputInjectionService : new NoopInputInjectionService();
-        var displays = OperatingSystem.IsMacOS() ? new MacDisplayService() as IDisplayService : new NoopDisplayService();
         var store = new JsonSettingsStore(AppPaths.SettingsPath);
-        _hotkeyService = hotkey;
+        _hotkeyService = platform.HotkeyService;
 
         _orchestrator = new ScreenSearchOrchestrator(
-            hotkey,
-            activeWindow,
-            elementProvider,
-            input,
-            displays,
+            platform.HotkeyService,
+            platform.ActiveWindowService,
+            platform.AccessibilityElementProvider,
+            platform.InputInjectionService,
+            platform.DisplayService,
             _permissionService,
             store,
             _logger);
@@ -84,7 +80,7 @@ public partial class App : Application
         _orchestrator.OverlayStateChanged += state =>
             Dispatcher.UIThread.Post(() => ApplyOverlayState(state));
 
-        hotkey.KeyPressed += OnGlobalKeyPressed;
+        platform.HotkeyService.KeyPressed += OnGlobalKeyPressed;
     }
 
     private void InitializeWindows()
@@ -412,75 +408,4 @@ public partial class App : Application
         }
     }
 
-    private sealed class NoopHotkeyService : IHotkeyService
-    {
-        public bool IsRegistered { get; private set; }
-        public bool SuppressKeyPropagation { get; set; }
-        public event Action? HotkeyPressed;
-        public event Action<GlobalKeyEvent>? KeyPressed;
-        public HotkeyRegistrationResult Register(HotkeyChord chord)
-        {
-            IsRegistered = true;
-            _ = HotkeyPressed;
-            _ = KeyPressed;
-            return new HotkeyRegistrationResult(true);
-        }
-
-        public void Unregister() => IsRegistered = false;
-        public void Dispose() => IsRegistered = false;
-    }
-
-    private sealed class NoopActiveWindowService : IActiveWindowService
-    {
-        public ActiveWindowContext? TryCaptureForegroundWindow() => null;
-    }
-
-    private sealed class NoopAccessibilityElementProvider : IAccessibilityElementProvider
-    {
-        public IReadOnlyList<UiCandidate> GetActionableElements(AnalysisContext context) => Array.Empty<UiCandidate>();
-    }
-
-    private sealed class NoopInputInjectionService : IInputInjectionService
-    {
-        public void Execute(UiActionType action, UiCandidate candidate)
-        {
-        }
-    }
-
-    private sealed class NoopDisplayService : IDisplayService
-    {
-        private static readonly DisplayInfo FallbackDisplay = new("fallback", new ScreenRect(0, 0, 1280, 800), 1.0, true);
-
-        public IReadOnlyList<DisplayInfo> GetDisplays() => [FallbackDisplay];
-
-        public DisplayInfo? GetDisplayById(string displayId) => FallbackDisplay;
-
-        public DisplayInfo? GetDisplayContainingPoint(ScreenPoint point) => FallbackDisplay;
-
-        public ScreenPoint GetCursorPosition() => new(0, 0);
-    }
-
-    private sealed class NoopPermissionService : IPermissionService
-    {
-        public PermissionSnapshot GetCurrentStatus() => new(false, false, false, "unsupported platform");
-
-        public PermissionSnapshot RequestMissingPermissions() => GetCurrentStatus();
-
-        public bool OpenSystemSettings(PermissionArea area, out string? errorMessage)
-        {
-            errorMessage = $"{area} の設定画面オープンはサポート外です。";
-            return false;
-        }
-    }
-
-    private sealed class NoopLaunchAtLoginService : ILaunchAtLoginService
-    {
-        public bool IsEnabled() => false;
-
-        public bool SetEnabled(bool enabled, out string? errorMessage)
-        {
-            errorMessage = "自動起動設定はサポート外です。";
-            return false;
-        }
-    }
 }

@@ -1,0 +1,11 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="Brush.ErrorText">#C53A3A</SolidColorBrush>
+    <SolidColorBrush x:Key="Brush.PanelBorder">#304050</SolidColorBrush>
+    <SolidColorBrush x:Key="Brush.PreviewBorder">#505C70</SolidColorBrush>
+    <SolidColorBrush x:Key="Brush.PreviewBackground">#20252D</SolidColorBrush>
+    <SolidColorBrush x:Key="Brush.RecentColorSwatchBorder">White</SolidColorBrush>
+    <Thickness x:Key="Thickness.RecentColorSwatchMargin">0,0,6,6</Thickness>
+  </Styles.Resources>
+</Styles>

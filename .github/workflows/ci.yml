@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - development
+  push:
+    branches:
+      - development
+
+jobs:
+  verify:
+    runs-on: macos-14
+    env:
+      DOTNET_VERSION: "10.0.x"
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: .NET セットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 依存復元
+        run: dotnet restore HitAScreen.slnx
+
+      - name: ビルド
+        run: dotnet build HitAScreen.slnx --no-restore
+
+      - name: テスト
+        run: dotnet test HitAScreen.slnx --no-build

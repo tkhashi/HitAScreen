@@ -283,6 +283,7 @@ public partial class MainWindow : Window
 
     private void UpdateAppearancePreview()
     {
+        // UI-02 例外: 設定値(色・透明度・スケール)に応じて実行時に見た目を算出する必要がある。
         var scale = _labelScaleSlider.Value;
         var opacity = _labelOpacitySlider.Value;
 
@@ -381,6 +382,7 @@ public partial class MainWindow : Window
 
     private void RebuildRecentColorButtons(WrapPanel panel, Action<Color> applyColor)
     {
+        // UI-02 例外: ユーザーが選択した色履歴から実行時にボタンを動的生成する。
         panel.Children.Clear();
 
         foreach (var colorHex in _recentLabelColors)
@@ -392,12 +394,7 @@ public partial class MainWindow : Window
 
             var button = new Button
             {
-                Width = 24,
-                Height = 24,
-                Padding = new Thickness(0),
-                Margin = new Thickness(0, 0, 6, 6),
-                BorderThickness = new Thickness(1),
-                BorderBrush = Brushes.White,
+                Classes = { "recent-color-swatch" },
                 Background = new SolidColorBrush(color)
             };
 
@@ -408,7 +405,11 @@ public partial class MainWindow : Window
 
         if (panel.Children.Count == 0)
         {
-            panel.Children.Add(new TextBlock { Text = "履歴なし", Opacity = 0.8 });
+            panel.Children.Add(new TextBlock
+            {
+                Text = "履歴なし",
+                Classes = { "recent-color-empty" }
+            });
         }
     }
 

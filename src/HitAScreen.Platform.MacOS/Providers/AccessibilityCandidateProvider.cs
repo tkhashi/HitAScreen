@@ -3,7 +3,7 @@ using HitAScreen.Platform.Abstractions;
 
 namespace HitAScreen.Platform.MacOS;
 
-public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvider
+public sealed class MacAccessibilityCandidateProvider : IAccessibilityElementProvider
 {
     private const uint Utf8Encoding = 0x08000100;
     private const int DlopenLazy = 1;
