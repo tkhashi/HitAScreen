@@ -1,124 +1,206 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="HitAScreen.App.MainWindow"
-        Width="900"
-        Height="700"
-        MinWidth="720"
-        MinHeight="520"
+        Width="980"
+        Height="760"
+        MinWidth="800"
+        MinHeight="560"
         CanResize="True">
-  <Grid RowDefinitions="Auto,*" Margin="16">
+  <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="10" Margin="16">
     <TextBlock Text="Hit A Screen Control Panel" FontSize="22" FontWeight="SemiBold" />
 
-    <Grid Row="1" ColumnDefinitions="2*,3*" ColumnSpacing="16" Margin="0,16,0,0">
-      <Border BorderThickness="1" BorderBrush="#304050" CornerRadius="8" Padding="12">
-        <ScrollViewer>
-          <StackPanel Spacing="10">
-            <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" />
+    <Border Grid.Row="1" BorderThickness="1" BorderBrush="#304050" CornerRadius="8" Padding="12">
+      <TabControl>
+        <TabItem Header="基本">
+          <ScrollViewer>
+            <StackPanel Spacing="10" Margin="2">
+              <TextBlock Text="起動ホットキー" FontWeight="SemiBold" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="HotkeyCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="HotkeyResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="HotkeyErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
 
-            <TextBlock Text="起動ホットキー" />
-            <TextBox Name="HotkeyTextBox" IsReadOnly="True" />
+              <TextBlock Text="Default Analysis Target" />
+              <ComboBox Name="TargetComboBox" SelectedIndex="0">
+                <ComboBoxItem Content="ActiveMonitor" />
+                <ComboBoxItem Content="ActiveWindow" />
+              </ComboBox>
 
-            <TextBlock Text="モニタ左切替" />
-            <TextBox Name="MonitorLeftHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="モニタ右切替" />
-            <TextBox Name="MonitorRightHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="再解析キー" />
-            <TextBox Name="ReanalyzeHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="アクション: 左クリック" />
-            <TextBox Name="ActionLeftHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="アクション: 右クリック" />
-            <TextBox Name="ActionRightHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="アクション: ダブルクリック" />
-            <TextBox Name="ActionDoubleHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="アクション: フォーカス" />
-            <TextBox Name="ActionFocusHotkeyTextBox" IsReadOnly="True" />
-
-            <TextBlock Text="固定キー (編集不可): ESC / Enter / Backspace" />
-            <TextBox IsReadOnly="True" Text="ESC / Enter / Backspace" />
-
-            <TextBlock Text="Default Analysis Target" />
-            <ComboBox Name="TargetComboBox" SelectedIndex="0">
-              <ComboBoxItem Content="ActiveMonitor" />
-              <ComboBoxItem Content="ActiveWindow" />
-            </ComboBox>
-
-            <TextBlock Text="Label Character Set" />
-            <TextBox Name="LabelCharsetTextBox" />
-
-            <TextBlock Text="Label Scale (0.5 - 3.0)" />
-            <TextBox Name="LabelScaleTextBox" />
-
-            <TextBlock Text="除外 AX Role (カンマ区切り)" />
-            <TextBox Name="ExcludedAxRolesTextBox" AcceptsReturn="True" Height="60" />
-
-            <TextBlock Text="ラベル通常色 (#RRGGBB または #AARRGGBB)" />
-            <TextBox Name="LabelNormalColorTextBox" />
-
-            <TextBlock Text="ラベル一致色 (#RRGGBB または #AARRGGBB)" />
-            <TextBox Name="LabelMatchedColorTextBox" />
-
-            <TextBlock Text="ラベル透明度 (0.1 - 1.0)" />
-            <TextBox Name="LabelOpacityTextBox" />
-
-            <TextBlock Text="ラベル幅 (20 - 180)" />
-            <TextBox Name="LabelWidthTextBox" />
-
-            <TextBlock Text="ラベル高さ (16 - 120)" />
-            <TextBox Name="LabelHeightTextBox" />
-
-            <TextBlock Text="ラベルフォントサイズ (8 - 48)" />
-            <TextBox Name="LabelFontSizeTextBox" />
-
-            <CheckBox Name="SuppressFullscreenCheckBox" Content="Suppress hotkey when fullscreen window is active" />
-            <CheckBox Name="ContinuousModeCheckBox" Content="Continuous mode (stay in overlay after action)" />
-            <CheckBox Name="DebugLoggingCheckBox" Content="Enable persistent debug log" />
-            <CheckBox Name="LaunchAtLoginCheckBox" Content="Launch at login" />
-
-            <TextBlock Text="Suppressed Processes (comma separated, e.g. Vivaldi, Steam)" TextWrapping="Wrap" />
-            <TextBox Name="SuppressedProcessTextBox" AcceptsReturn="True" Height="90" />
-
-            <TextBlock Text="権限状態" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
-            <TextBlock Name="AccessibilityPermissionTextBlock" />
-            <TextBlock Name="InputMonitoringPermissionTextBlock" />
-            <TextBlock Name="ScreenRecordingPermissionTextBlock" />
-
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Name="RefreshPermissionButton" Content="権限状態を再取得" />
-              <Button Name="OpenAccessibilitySettingsButton" Content="Accessibility を開く" />
+              <CheckBox Name="ContinuousModeCheckBox" Content="Continuous mode (stay in overlay after action)" />
+              <CheckBox Name="LaunchAtLoginCheckBox" Content="Launch at login" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Name="OpenInputMonitoringSettingsButton" Content="Input Monitoring を開く" />
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="ショートカット">
+          <ScrollViewer>
+            <StackPanel Spacing="10" Margin="2">
+              <TextBlock Text="オーバーレイ操作キー" FontSize="16" FontWeight="SemiBold" />
+
+              <TextBlock Text="モニタ左切替" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="MonitorLeftCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="MonitorLeftResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="MonitorLeftErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="モニタ右切替" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="MonitorRightCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="MonitorRightResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="MonitorRightErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="再解析キー" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="ReanalyzeCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="ReanalyzeResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="ReanalyzeErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="アクション: 左クリック" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="ActionLeftCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="ActionLeftResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="ActionLeftErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="アクション: 右クリック" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="ActionRightCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="ActionRightResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="ActionRightErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="アクション: ダブルクリック" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="ActionDoubleCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="ActionDoubleResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="ActionDoubleErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="アクション: フォーカス" />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Button Name="ActionFocusCaptureButton" HorizontalAlignment="Stretch" />
+                <Button Grid.Column="1" Name="ActionFocusResetButton" Content="既定値" />
+              </Grid>
+              <TextBlock Name="ActionFocusErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+
+              <TextBlock Text="固定キー (編集不可): ESC / Enter / Backspace" FontStyle="Italic" />
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="表示">
+          <Grid RowDefinitions="Auto,*" RowSpacing="10">
+            <StackPanel Grid.Row="0" Spacing="6" Margin="2">
+              <TextBlock Text="ラベルプレビュー" FontSize="16" FontWeight="SemiBold" />
+              <Border BorderBrush="#505C70" BorderThickness="1" CornerRadius="8" Padding="12" Background="#20252D">
+                <Grid Height="160" ClipToBounds="True">
+                  <Grid Name="PreviewLayoutGrid" ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <Border Name="PreviewNormalLabelBorder" CornerRadius="4">
+                      <TextBlock Name="PreviewNormalLabelTextBlock" Text="AA" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="White" TextAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1" Name="PreviewMatchedLabelBorder" CornerRadius="4">
+                      <TextBlock Name="PreviewMatchedLabelTextBlock" Text="AB" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" Foreground="Black" TextAlignment="Center" />
+                    </Border>
+                  </Grid>
+                </Grid>
+              </Border>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1">
+              <StackPanel Spacing="12" Margin="2">
+                <TextBlock Text="Label Character Set" />
+                <TextBox Name="LabelCharsetTextBox" />
+
+                <TextBlock Text="ラベルサイズ (0.5 - 3.0)" />
+                <Grid ColumnDefinitions="*,70" ColumnSpacing="8">
+                  <Slider Name="LabelScaleSlider" Minimum="0.5" Maximum="3.0" TickFrequency="0.05" IsSnapToTickEnabled="False" />
+                  <TextBlock Grid.Column="1" Name="LabelScaleValueTextBlock" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+
+                <TextBlock Text="ラベル透明度 (0.1 - 1.0)" />
+                <Grid ColumnDefinitions="*,70" ColumnSpacing="8">
+                  <Slider Name="LabelOpacitySlider" Minimum="0.1" Maximum="1.0" TickFrequency="0.01" IsSnapToTickEnabled="False" />
+                  <TextBlock Grid.Column="1" Name="LabelOpacityValueTextBlock" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+
+                <TextBlock Text="ラベル通常色" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <ColorPicker Name="LabelNormalColorPicker" IsAlphaEnabled="True" IsAlphaVisible="True" Width="40" Height="32" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <PathIcon Width="16" Height="16" Data="M12 2C8.1 2 5 5.1 5 9c0 5.3 7 13 7 13s7-7.7 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z" />
+                  </ColorPicker>
+                  <TextBlock Name="LabelNormalColorValueTextBlock" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="最近使った色 (最大10)" FontSize="12" />
+                <WrapPanel Name="NormalRecentColorsPanel" />
+
+                <TextBlock Text="ラベル一致色" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <ColorPicker Name="LabelMatchedColorPicker" IsAlphaEnabled="True" IsAlphaVisible="True" Width="40" Height="32" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <PathIcon Width="16" Height="16" Data="M12 2C8.1 2 5 5.1 5 9c0 5.3 7 13 7 13s7-7.7 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z" />
+                  </ColorPicker>
+                  <TextBlock Name="LabelMatchedColorValueTextBlock" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="最近使った色 (最大10)" FontSize="12" />
+                <WrapPanel Name="MatchedRecentColorsPanel" />
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+        </TabItem>
+
+        <TabItem Header="権限">
+          <ScrollViewer>
+            <StackPanel Spacing="10" Margin="2">
+              <TextBlock Text="権限状態" FontSize="16" FontWeight="SemiBold" />
+              <TextBlock Name="AccessibilityPermissionTextBlock" />
+              <TextBlock Name="InputMonitoringPermissionTextBlock" />
+              <TextBlock Name="ScreenRecordingPermissionTextBlock" TextWrapping="Wrap" />
+
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Name="RefreshPermissionButton" Content="権限状態を再取得" />
+                <Button Name="RequestPermissionButton" Content="不足権限を要求" />
+              </StackPanel>
+
+              <TextBlock Text="システム設定を開く" FontWeight="SemiBold" Margin="0,8,0,0" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Name="OpenAccessibilitySettingsButton" Content="Accessibility を開く" />
+                <Button Name="OpenInputMonitoringSettingsButton" Content="Input Monitoring を開く" />
+              </StackPanel>
               <Button Name="OpenScreenRecordingSettingsButton" Content="Screen Recording を開く (任意)" />
             </StackPanel>
+          </ScrollViewer>
+        </TabItem>
 
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Name="SaveSettingsButton" Content="Save Settings" />
-              <Button Name="RequestPermissionButton" Content="Request Permissions" />
+        <TabItem Header="詳細">
+          <ScrollViewer>
+            <StackPanel Spacing="10" Margin="2">
+              <CheckBox Name="SuppressFullscreenCheckBox" Content="Suppress hotkey when fullscreen window is active" />
+              <CheckBox Name="DebugLoggingCheckBox" Content="Enable persistent debug log" />
+
+              <TextBlock Text="除外 AX Role (カンマ区切り)" />
+              <TextBox Name="ExcludedAxRolesTextBox" AcceptsReturn="True" Height="60" />
+
+              <TextBlock Text="Suppressed Processes (comma separated, e.g. Vivaldi, Steam)" TextWrapping="Wrap" />
+              <TextBox Name="SuppressedProcessTextBox" AcceptsReturn="True" Height="90" />
+
+              <TextBlock Text="Diagnostics" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
+              <TextBox Name="DiagnosticsTextBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="220" />
             </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+      </TabControl>
+    </Border>
 
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Name="StartSessionButton" Content="Start Session" />
-              <Button Name="ReanalyzeButton" Content="Reanalyze" />
-              <Button Name="CancelSessionButton" Content="Cancel Session" />
-            </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+      <Button Name="SaveSettingsButton" Content="設定を保存" />
+      <Button Name="StartSessionButton" Content="セッション開始" />
+      <Button Name="ReanalyzeButton" Content="再解析" />
+      <Button Name="CancelSessionButton" Content="セッション中断" />
+    </StackPanel>
 
-            <TextBlock Name="StatusTextBlock" Text="Ready" TextWrapping="Wrap" />
-          </StackPanel>
-        </ScrollViewer>
-      </Border>
-
-      <Border Grid.Column="1" BorderThickness="1" BorderBrush="#304050" CornerRadius="8" Padding="12">
-        <Grid RowDefinitions="Auto,*" RowSpacing="8">
-          <TextBlock Text="Diagnostics" FontSize="18" FontWeight="SemiBold" />
-          <TextBox Grid.Row="1" Name="DiagnosticsTextBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" />
-        </Grid>
-      </Border>
-    </Grid>
+    <TextBlock Grid.Row="3" Name="StatusTextBlock" Text="準備完了" TextWrapping="Wrap" />
   </Grid>
 </Window>

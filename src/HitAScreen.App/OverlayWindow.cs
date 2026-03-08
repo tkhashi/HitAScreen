@@ -96,9 +96,9 @@ public sealed class OverlayWindow : Window
         var normalizedOpacity = Math.Clamp(appearance.Opacity, 0.1, 1.0);
         var normalBackground = WithOpacity(ParseColor(appearance.NormalBackgroundColor, Color.FromRgb(90, 90, 90)), normalizedOpacity);
         var matchedBackground = WithOpacity(ParseColor(appearance.MatchedBackgroundColor, Color.FromRgb(255, 214, 92)), normalizedOpacity);
-        var fontSize = Math.Clamp(appearance.FontSize * labelScale, 8, 48);
-        var horizontalPadding = Math.Max(3, Math.Round(fontSize * 0.25));
-        var verticalPadding = Math.Max(1, Math.Round(fontSize * 0.15));
+        var normalForeground = ResolveReadableBrush(normalBackground);
+        var matchedForeground = ResolveReadableBrush(matchedBackground);
+        var metrics = LabelAppearanceMetrics.Calculate(appearance, labelScale);
 
         foreach (var hint in state.Hints)
         {
@@ -108,10 +108,12 @@ public sealed class OverlayWindow : Window
             {
                 Text = hint.Label,
                 FontWeight = FontWeight.Bold,
-                FontSize = fontSize,
-                Foreground = Brushes.Black
+                FontSize = metrics.FontSize,
+                Foreground = hint.MatchesInput ? matchedForeground : normalForeground,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
             };
-            textBlock.Measure(Size.Infinity);
 
             var border = new Border
             {
@@ -121,7 +123,9 @@ public sealed class OverlayWindow : Window
                 BorderBrush = new SolidColorBrush(Color.FromArgb(220, 12, 20, 26)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(horizontalPadding, verticalPadding),
+                MinWidth = metrics.MinWidth,
+                MinHeight = metrics.MinHeight,
+                Padding = new Thickness(metrics.HorizontalPadding, metrics.VerticalPadding),
                 Child = textBlock
             };
 
@@ -235,5 +239,11 @@ public sealed class OverlayWindow : Window
     {
         var alpha = (byte)Math.Clamp((int)Math.Round(color.A * opacity), 0, 255);
         return Color.FromArgb(alpha, color.R, color.G, color.B);
+    }
+
+    private static IBrush ResolveReadableBrush(Color color)
+    {
+        var luminance = ((0.299 * color.R) + (0.587 * color.G) + (0.114 * color.B)) / 255.0;
+        return luminance >= 0.58 ? Brushes.Black : Brushes.White;
     }
 }

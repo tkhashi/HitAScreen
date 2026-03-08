@@ -61,6 +61,21 @@ public sealed class SettingsAndFilteringTests
         {
             LabelScale = 999,
             ExcludedAxRoles = Array.Empty<string>(),
+            RecentLabelColors =
+            [
+                "FF0000",
+                "#112233",
+                "#112233",
+                "invalid",
+                "#445566",
+                "#778899",
+                "#AABBCC",
+                "#DDEEFF",
+                "#010203",
+                "#040506",
+                "#070809",
+                "#0A0B0C"
+            ],
             LabelAppearance = new LabelAppearanceSettings
             {
                 NormalBackgroundColor = "invalid",
@@ -82,6 +97,9 @@ public sealed class SettingsAndFilteringTests
         Assert.Equal(120, normalized.LabelAppearance.LabelHeight);
         Assert.Equal(8, normalized.LabelAppearance.FontSize);
         Assert.Contains("AXGroup", normalized.ExcludedAxRoles);
+        Assert.Equal(10, normalized.RecentLabelColors.Count);
+        Assert.Contains("#FF0000", normalized.RecentLabelColors);
+        Assert.DoesNotContain(normalized.RecentLabelColors, static color => string.Equals(color, "invalid", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
