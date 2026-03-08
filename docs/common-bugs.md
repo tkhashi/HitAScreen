@@ -1,6 +1,6 @@
 # よく発生する不具合メモ
 
-最終更新: 2026-03-08 (branch: `codex/fix-finder-overlay-and-browser-ax`)
+最終更新: 2026-03-08 (branch: `codex/overlay-click-cancel-rainbow`)
 
 ## 1. オーバーレイは表示されるがラベルが出ない
 - 事象:
@@ -67,6 +67,26 @@
   - 子要素探索を `AXChildren` に加えて `AXVisibleChildren` / `AXContents` まで拡張する。
   - 座標取得で `AXPosition/AXSize` が取れない場合に `AXFrame` をフォールバック参照する。
   - ブラウザプロセス時は、ブラウザ系ロール・アクションあり要素も候補化対象に含める。
+
+## 6. 初回のみレインボー枠がズレる / ESCでクラッシュする
+- 発生事象:
+  - アプリ起動後の初回セッションだけ、ラベル表示直前のレインボー枠が下方向へズレる。
+  - 本表示（ラベル表示）に切り替わると位置が戻る。
+  - オーバーレイ表示中に `ESC` 押下でクラッシュすることがある。
+- 原因:
+  - 初回 `Show()` 後に、古い `OverlayViewState`（準備中）を `Dispatcher.Post` で再描画してしまい、最新状態と競合していた。
+  - 準備中オーバーレイが `ActiveMonitor` 固定で計算され、本表示が `DefaultAnalysisTarget`（`ActiveWindow` を含む）で計算されるため、初回だけ表示領域が不一致になっていた。
+  - EventTap スレッド（非UIスレッド）で `OverlayWindow.IsVisible` を参照し、UIスレッド境界違反を起こしていた。
+- 修正内容:
+  - `StartSession()` 開始時に `targetForSession` を固定し、準備中/本表示とも同じターゲットで `TargetBounds` を計算する。
+  - 初回 `Show()` 後は、キャプチャ済みの古い `state` ではなく `_latestOverlayState` を使って再描画する。
+  - グローバルキー処理で UI コントロール参照を行わず、`SessionState` のみで `ESC` を処理する。
+  - プライマリディスプレイ上では枠の上マージンを固定値にし、メニューバー（トレイ）への被りを回避する。
+- 再発防止チェック:
+  - 準備中オーバーレイと本表示オーバーレイで、`Target` / `TargetBounds` / `Display` の算出元が一致していること。
+  - `Dispatcher.Post` で UI を再描画する場合、クロージャに古い `state` を閉じ込めないこと（最新状態を参照すること）。
+  - EventTap / ThreadPool 側コードから `Window` など UI オブジェクトを直接参照しないこと。
+  - 手動確認で「起動直後の初回セッション」だけを必ず含めること（2回目以降だけで合格にしない）。
 
 ## 運用メモ
 - 権限関連の不具合は「権限再取得 → アプリ再起動」で解消するケースが多い。

@@ -214,7 +214,8 @@ public sealed record OverlayViewState(
     UiActionType PendingAction,
     IReadOnlyList<OverlayHint> Hints,
     bool ContinuousMode,
-    AnalysisTarget Target);
+    AnalysisTarget Target,
+    bool IsPreparing = false);
 
 public static class UserSettingsNormalizer
 {

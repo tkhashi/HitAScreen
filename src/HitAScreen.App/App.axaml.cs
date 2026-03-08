@@ -23,6 +23,7 @@ public partial class App : Application
     private ILaunchAtLoginService? _launchAtLoginService;
     private IHotkeyService? _hotkeyService;
     private bool _isShuttingDown;
+    private OverlayViewState? _latestOverlayState;
 
     public override void Initialize()
     {
@@ -117,6 +118,7 @@ public partial class App : Application
         _overlayWindow.BackspacePressed += () => _orchestrator.HandleBackspace();
         _overlayWindow.EnterPressed += () => _orchestrator.ConfirmInput();
         _overlayWindow.EscapePressed += () => _orchestrator.CancelSession();
+        _overlayWindow.PointerCancelRequested += () => _orchestrator.CancelSession();
         _overlayWindow.MonitorSwitchRequested += direction => _orchestrator.SwitchMonitor(direction);
         _overlayWindow.ActionSelected += action => _orchestrator.SetPendingAction(action);
         _overlayWindow.ReanalyzeRequested += () => _orchestrator.Reanalyze();
@@ -234,8 +236,10 @@ public partial class App : Application
             return;
         }
 
+        _latestOverlayState = state;
         if (state is null)
         {
+            _overlayWindow.StopVisualEffects();
             _overlayWindow.Hide();
             return;
         }
@@ -245,11 +249,20 @@ public partial class App : Application
         if (!_overlayWindow.IsVisible)
         {
             _overlayWindow.Show();
-            Dispatcher.UIThread.Post(
-                () => _overlayWindow.Render(state, settings.LabelAppearance, settings.LabelScale),
-                DispatcherPriority.Loaded);
+            Dispatcher.UIThread.Post(ReapplyLatestOverlayState, DispatcherPriority.Loaded);
         }
 
+    }
+
+    private void ReapplyLatestOverlayState()
+    {
+        if (_overlayWindow is null || !_overlayWindow.IsVisible || _latestOverlayState is null)
+        {
+            return;
+        }
+
+        var settings = UserSettingsNormalizer.Normalize(_orchestrator?.Settings);
+        _overlayWindow.Render(_latestOverlayState, settings.LabelAppearance, settings.LabelScale);
     }
 
     private void ShowMainWindow()
@@ -326,7 +339,7 @@ public partial class App : Application
     private void OnGlobalKeyPressed(GlobalKeyEvent key)
     {
         var orchestrator = _orchestrator;
-        if (orchestrator is null || orchestrator.State != SessionState.OverlayActive)
+        if (orchestrator is null || (orchestrator.State != SessionState.OverlayActive && orchestrator.State != SessionState.Analyze))
         {
             return;
         }

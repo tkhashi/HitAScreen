@@ -32,7 +32,7 @@ internal static class MacAppInterop
         _ = objc_msgSend_nint(app, SetActivationPolicySel, AccessoryPolicy);
     }
 
-    public static void MakeOverlayClickThrough(Window window)
+    public static void ConfigureOverlayMouseEvents(Window window, bool ignoreMouseEvents)
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -45,7 +45,7 @@ internal static class MacAppInterop
             return;
         }
 
-        objc_msgSend_bool(handle, SetIgnoresMouseEventsSel, true);
+        objc_msgSend_bool(handle, SetIgnoresMouseEventsSel, ignoreMouseEvents);
         objc_msgSend_bool(handle, SetMovableSel, false);
     }
 

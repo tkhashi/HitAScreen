@@ -139,6 +139,109 @@ public sealed class CoreBehaviorTests
     }
 
     [Fact]
+    public async Task Orchestrator_StartSession_PublishesPreparingThenReadyOverlay()
+    {
+        var hotkey = new FakeHotkeyService();
+        var activeWindow = new FakeActiveWindowService
+        {
+            Context = new ActiveWindowContext(
+                11,
+                210,
+                "Editor",
+                null,
+                "ReadyState",
+                new ScreenRect(0, 0, 1280, 720),
+                "display-1",
+                2.0,
+                true)
+        };
+        var provider = new FakeAccessibilityProvider
+        {
+            Candidates =
+            [
+                new UiCandidate("c1", new ScreenRect(180, 160, 44, 24), "AXButton", null, "OK", "AXPress", 0.9, CandidateSource.Accessibility)
+            ]
+        };
+        var orchestrator = new ScreenSearchOrchestrator(
+            hotkey,
+            activeWindow,
+            provider,
+            new FakeInputInjectionService(),
+            new FakeDisplayService(),
+            new FakePermissionService(),
+            new InMemorySettingsStore(),
+            new TestLogger());
+
+        var overlays = new List<OverlayViewState?>();
+        orchestrator.OverlayStateChanged += state => overlays.Add(state);
+
+        await orchestrator.InitializeAsync();
+        orchestrator.StartSession();
+
+        Assert.True(overlays.Count >= 2);
+        Assert.NotNull(overlays[0]);
+        Assert.True(overlays[0]!.IsPreparing);
+        Assert.NotNull(overlays[^1]);
+        Assert.False(overlays[^1]!.IsPreparing);
+    }
+
+    [Fact]
+    public async Task Orchestrator_CancelSessionDuringPreparing_DoesNotRepublishReadyOverlay()
+    {
+        var hotkey = new FakeHotkeyService();
+        var activeWindow = new FakeActiveWindowService
+        {
+            Context = new ActiveWindowContext(
+                12,
+                220,
+                "Editor",
+                null,
+                "CancelWhilePreparing",
+                new ScreenRect(0, 0, 1280, 720),
+                "display-1",
+                2.0,
+                true)
+        };
+        var provider = new BlockingAccessibilityProvider();
+        var orchestrator = new ScreenSearchOrchestrator(
+            hotkey,
+            activeWindow,
+            provider,
+            new FakeInputInjectionService(),
+            new FakeDisplayService(),
+            new FakePermissionService(),
+            new InMemorySettingsStore(),
+            new TestLogger());
+
+        var overlays = new List<OverlayViewState?>();
+        var canceled = false;
+        var readyAfterCancel = false;
+        orchestrator.OverlayStateChanged += state =>
+        {
+            overlays.Add(state);
+            if (canceled && state is { IsPreparing: false })
+            {
+                readyAfterCancel = true;
+            }
+        };
+
+        await orchestrator.InitializeAsync();
+        var startTask = Task.Run(orchestrator.StartSession);
+        Assert.True(provider.WaitForAnalyzeStart(TimeSpan.FromSeconds(3)));
+        Assert.True(SpinWait.SpinUntil(() => overlays.Any(state => state is { IsPreparing: true }), 3000));
+
+        canceled = true;
+        orchestrator.CancelSession();
+        provider.Release();
+        await startTask;
+
+        Assert.Contains(overlays, static state => state is { IsPreparing: true });
+        Assert.Null(overlays[^1]);
+        Assert.False(readyAfterCancel);
+        Assert.Equal(SessionState.Idle, orchestrator.State);
+    }
+
+    [Fact]
     public async Task Orchestrator_UsesDisplayBounds_WhenActiveWindowBoundsAreInvalid()
     {
         var hotkey = new FakeHotkeyService();
@@ -313,6 +416,30 @@ public sealed class CoreBehaviorTests
         public IReadOnlyList<UiCandidate> Candidates { get; set; } = [];
 
         public IReadOnlyList<UiCandidate> GetActionableElements(AnalysisContext context) => Candidates;
+    }
+
+    private sealed class BlockingAccessibilityProvider : IAccessibilityElementProvider
+    {
+        private readonly ManualResetEventSlim _started = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+
+        public bool WaitForAnalyzeStart(TimeSpan timeout) => _started.Wait(timeout);
+
+        public void Release() => _release.Set();
+
+        public IReadOnlyList<UiCandidate> GetActionableElements(AnalysisContext context)
+        {
+            _started.Set();
+            if (!_release.Wait(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("テスト待機がタイムアウトしました。");
+            }
+
+            return
+            [
+                new UiCandidate("blocking-candidate", new ScreenRect(260, 180, 44, 24), "AXButton", null, "OK", "AXPress", 0.9, CandidateSource.Accessibility)
+            ];
+        }
     }
 
     private sealed class FakeInputInjectionService : IInputInjectionService

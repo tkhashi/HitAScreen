@@ -18,6 +18,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         public required DateTimeOffset StartedAt { get; init; }
         public string Input { get; set; } = string.Empty;
         public UiActionType PendingAction { get; set; } = UiActionType.LeftClick;
+        public bool IsPreparing { get; set; }
         public long CaptureMs { get; set; }
         public long AnalyzeMs { get; set; }
         public long OverlayMs { get; set; }
@@ -106,7 +107,10 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var loaded = await _settingsStore.LoadAsync(cancellationToken);
-        _settings = UserSettingsNormalizer.Normalize(loaded);
+        lock (_sync)
+        {
+            _settings = UserSettingsNormalizer.Normalize(loaded);
+        }
         SettingsChanged?.Invoke(_settings);
 
         PublishDiagnostics(message: "orchestrator initialized", state: SessionState.Idle, permissions: _permissionService.GetCurrentStatus());
@@ -130,6 +134,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
     public void StartSession()
     {
+        AnalysisTarget targetForSession;
         lock (_sync)
         {
             if (_session is not null)
@@ -137,6 +142,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 return;
             }
 
+            targetForSession = _settings.DefaultAnalysisTarget;
             _state = SessionState.CaptureContext;
         }
 
@@ -158,28 +164,21 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         context = EnsureContextHasDisplay(context);
         captureStopwatch.Stop();
 
-        lock (_sync)
-        {
-            _state = SessionState.Analyze;
-        }
-
-        var analyzeStopwatch = Stopwatch.StartNew();
-        var (display, targetBounds, bindings, excludedCount, overlapPrunedCount) = Analyze(context, _settings.DefaultAnalysisTarget);
-        analyzeStopwatch.Stop();
-
+        var preparingSessionId = Guid.NewGuid();
+        var (preparingDisplay, preparingTargetBounds) = ResolveDisplayAndTargetBounds(context, targetForSession);
         lock (_sync)
         {
             _session = new ActiveSession
             {
-                SessionId = Guid.NewGuid(),
+                SessionId = preparingSessionId,
                 Context = context,
-                Display = display,
-                TargetBounds = targetBounds,
-                Target = _settings.DefaultAnalysisTarget,
-                Bindings = bindings,
+                Display = preparingDisplay,
+                TargetBounds = preparingTargetBounds,
+                Target = targetForSession,
+                Bindings = [],
                 StartedAt = DateTimeOffset.UtcNow,
-                CaptureMs = captureStopwatch.ElapsedMilliseconds,
-                AnalyzeMs = analyzeStopwatch.ElapsedMilliseconds
+                IsPreparing = true,
+                CaptureMs = captureStopwatch.ElapsedMilliseconds
             };
             _state = SessionState.OverlayActive;
         }
@@ -190,9 +189,9 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 message: "overlay-input-unavailable: continue-without-suppression",
                 state: SessionState.OverlayActive,
                 captureMs: captureStopwatch.ElapsedMilliseconds,
-                analyzeMs: analyzeStopwatch.ElapsedMilliseconds,
+                analyzeMs: null,
                 overlayReadyMs: totalStopwatch.ElapsedMilliseconds,
-                candidateCount: bindings.Count,
+                candidateCount: 0,
                 context: context,
                 permissions: permissions);
         }
@@ -201,14 +200,43 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _hotkeyService.SuppressKeyPropagation = true;
         }
 
-        totalStopwatch.Stop();
+        PublishOverlay();
 
         lock (_sync)
         {
-            if (_session is not null)
+            if (_session is null || _session.SessionId != preparingSessionId)
             {
-                _session.OverlayMs = totalStopwatch.ElapsedMilliseconds;
+                return;
             }
+
+            _state = SessionState.Analyze;
+        }
+
+        var analyzeStopwatch = Stopwatch.StartNew();
+        var (display, targetBounds, bindings, excludedCount, overlapPrunedCount) = Analyze(context, targetForSession);
+        analyzeStopwatch.Stop();
+
+        totalStopwatch.Stop();
+
+        var shouldPublishReadyState = false;
+        lock (_sync)
+        {
+            if (_session is not null && _session.SessionId == preparingSessionId)
+            {
+                _session.Display = display;
+                _session.TargetBounds = targetBounds;
+                _session.Bindings = bindings;
+                _session.IsPreparing = false;
+                _session.AnalyzeMs = analyzeStopwatch.ElapsedMilliseconds;
+                _session.OverlayMs = totalStopwatch.ElapsedMilliseconds;
+                _state = SessionState.OverlayActive;
+                shouldPublishReadyState = true;
+            }
+        }
+
+        if (!shouldPublishReadyState)
+        {
+            return;
         }
 
         PublishOverlay();
@@ -232,7 +260,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     {
         lock (_sync)
         {
-            if (_session is null)
+            if (_session is null || _session.IsPreparing)
             {
                 return;
             }
@@ -245,7 +273,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     {
         lock (_sync)
         {
-            if (_session is null)
+            if (_session is null || _session.IsPreparing)
             {
                 return;
             }
@@ -264,7 +292,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             snapshot = _session;
         }
 
-        if (snapshot is null)
+        if (snapshot is null || snapshot.IsPreparing)
         {
             return;
         }
@@ -307,7 +335,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     {
         lock (_sync)
         {
-            if (_session is null)
+            if (_session is null || _session.IsPreparing)
             {
                 return;
             }
@@ -323,7 +351,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     {
         lock (_sync)
         {
-            if (_session is null || _session.Input.Length == 0)
+            if (_session is null || _session.IsPreparing || _session.Input.Length == 0)
             {
                 return;
             }
@@ -486,16 +514,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
     private (DisplayInfo display, ScreenRect targetBounds, List<HintBinding> bindings, int excludedCount, int overlapPrunedCount) Analyze(ActiveWindowContext context, AnalysisTarget target)
     {
-        var displays = _displayService.GetDisplays();
-        var targetDisplay = context.DisplayId is not null
-            ? _displayService.GetDisplayById(context.DisplayId)
-            : null;
-
-        targetDisplay ??= _displayService.GetDisplayContainingPoint(context.Bounds.Center);
-        targetDisplay ??= displays.FirstOrDefault() ?? new DisplayInfo("fallback", context.Bounds, context.DpiScale ?? 1.0, true);
-
-        var preferredBounds = target == AnalysisTarget.ActiveWindow ? context.Bounds : targetDisplay.Bounds;
-        var targetBounds = ResolveTargetBounds(preferredBounds, targetDisplay.Bounds);
+        var (targetDisplay, targetBounds) = ResolveDisplayAndTargetBounds(context, target);
 
         var analysis = new AnalysisContext(context, targetDisplay, target, targetBounds);
         var candidates = FilterAndSortCandidates(
@@ -656,6 +675,21 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         return preferred;
     }
 
+    private (DisplayInfo display, ScreenRect targetBounds) ResolveDisplayAndTargetBounds(ActiveWindowContext context, AnalysisTarget target)
+    {
+        var displays = _displayService.GetDisplays();
+        var targetDisplay = context.DisplayId is not null
+            ? _displayService.GetDisplayById(context.DisplayId)
+            : null;
+
+        targetDisplay ??= _displayService.GetDisplayContainingPoint(context.Bounds.Center);
+        targetDisplay ??= displays.FirstOrDefault() ?? new DisplayInfo("fallback", context.Bounds, context.DpiScale ?? 1.0, true);
+
+        var preferredBounds = target == AnalysisTarget.ActiveWindow ? context.Bounds : targetDisplay.Bounds;
+        var targetBounds = ResolveTargetBounds(preferredBounds, targetDisplay.Bounds);
+        return (targetDisplay, targetBounds);
+    }
+
     private void TryExecuteFromInput()
     {
         ActiveSession? session;
@@ -664,7 +698,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             session = _session;
         }
 
-        if (session is null || session.Input.Length == 0)
+        if (session is null || session.IsPreparing || session.Input.Length == 0)
         {
             return;
         }
@@ -821,7 +855,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             session.PendingAction,
             hints,
             _settings.ContinuousMode,
-            session.Target);
+            session.Target,
+            session.IsPreparing);
 
         OverlayStateChanged?.Invoke(state);
     }
