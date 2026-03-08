@@ -120,6 +120,7 @@ public sealed record UserSettings
     public string LabelCharacterSet { get; init; } = "ASDFGHJKLQWERTYUIOPZXCVBNM";
     public double LabelScale { get; init; } = 1.0;
     public LabelAppearanceSettings LabelAppearance { get; init; } = new();
+    public IReadOnlyList<string> RecentLabelColors { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ExcludedAxRoles { get; init; } = ["AXGroup"];
     public bool SuppressInFullscreen { get; init; } = true;
     public IReadOnlyList<string> SuppressedProcesses { get; init; } = Array.Empty<string>();
@@ -227,6 +228,7 @@ public static class UserSettingsNormalizer
         var normalizedHotkey = NormalizeChord(settings.Hotkey, new HotkeyChord(46, true, false, false, true, "Cmd+Shift+M"));
         var normalizedOverlayHotkeys = NormalizeOverlayHotkeys(settings.OverlayHotkeys);
         var normalizedLabelAppearance = NormalizeLabelAppearance(settings.LabelAppearance);
+        var normalizedRecentColors = NormalizeRecentColors(settings.RecentLabelColors);
         var normalizedExcludedRoles = NormalizeRoles(settings.ExcludedAxRoles);
         var normalizedCharacterSet = string.IsNullOrWhiteSpace(settings.LabelCharacterSet)
             ? DefaultLabelCharacterSet
@@ -238,6 +240,7 @@ public static class UserSettingsNormalizer
             Hotkey = normalizedHotkey,
             OverlayHotkeys = normalizedOverlayHotkeys,
             LabelAppearance = normalizedLabelAppearance,
+            RecentLabelColors = normalizedRecentColors,
             ExcludedAxRoles = normalizedExcludedRoles,
             LabelCharacterSet = normalizedCharacterSet,
             LabelScale = normalizedScale
@@ -283,6 +286,16 @@ public static class UserSettingsNormalizer
             .ToArray();
 
         return normalized.Length == 0 ? DefaultExcludedRoles : normalized;
+    }
+
+    private static string[] NormalizeRecentColors(IReadOnlyList<string>? colors)
+    {
+        return (colors ?? Array.Empty<string>())
+            .Select(static color => NormalizeColor(color, string.Empty))
+            .Where(static color => !string.IsNullOrWhiteSpace(color))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .ToArray();
     }
 
     private static HotkeyChord NormalizeChord(HotkeyChord value, HotkeyChord fallback)
