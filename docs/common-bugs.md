@@ -58,7 +58,7 @@
   - Chrome / Safari 等で、ラベルが最小化・最大化・閉じるの 3 件付近に偏る。
 - 原因:
   - `MacHotkeyService.OnEvent()` でホットキーイベント内から `StartSession()` が同期実行され、重い解析時に EventTap が無効化されるケースがあった。
-  - `MacAccessibilityElementProvider` の候補化条件が厳しく、`AXChildren` + `AXPosition/AXSize` + `AXPress` 前提になっていたため、ブラウザで露出する `AXVisibleChildren` / `AXContents` / `AXFrame` 系の要素を取りこぼしていた。
+  - `MacAccessibilityCandidateProvider` の候補化条件が厳しく、`AXChildren` + `AXPosition/AXSize` + `AXPress` 前提になっていたため、ブラウザで露出する `AXVisibleChildren` / `AXContents` / `AXFrame` 系の要素を取りこぼしていた。
 - 修正内容:
   - ホットキー一致時のハンドラ呼び出しを ThreadPool へオフロードし、EventTap コールバックを即時復帰させる。
   - `kCGEventTapDisabledByTimeout` / `kCGEventTapDisabledByUserInput` を検知したら `CGEventTapEnable(..., true)` で再有効化する。

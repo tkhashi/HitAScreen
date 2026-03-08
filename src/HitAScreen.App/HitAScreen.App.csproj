@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
     <ApplicationTitle>Hit A Screen</ApplicationTitle>
     <AssemblyTitle>Hit A Screen</AssemblyTitle>
     <Product>Hit A Screen</Product>

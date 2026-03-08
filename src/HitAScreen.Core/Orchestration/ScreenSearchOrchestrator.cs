@@ -27,19 +27,20 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     private readonly object _sync = new();
     private readonly IHotkeyService _hotkeyService;
     private readonly IActiveWindowService _activeWindowService;
-    private readonly IAccessibilityElementProvider _accessibilityElementProvider;
+    private readonly CandidatePipeline _candidatePipeline;
     private readonly IInputInjectionService _inputInjectionService;
     private readonly IDisplayService _displayService;
     private readonly IPermissionService _permissionService;
     private readonly ISettingsStore _settingsStore;
     private readonly IAppLogger _logger;
+    private readonly ActionExecutor _actionExecutor;
     private readonly HintLabelGenerator _labelGenerator = new();
 
     private CancellationTokenSource? _suppressionCts;
     private Task? _suppressionTask;
     private UserSettings _settings = new();
     private ActiveSession? _session;
-    private SessionState _state = SessionState.Idle;
+    private readonly SessionStateMachine _stateMachine = new();
     private bool _disposed;
     private HotkeyChord? _registeredChord;
     private bool _suppressionActive;
@@ -57,12 +58,16 @@ public sealed class ScreenSearchOrchestrator : IDisposable
     {
         _hotkeyService = hotkeyService;
         _activeWindowService = activeWindowService;
-        _accessibilityElementProvider = accessibilityElementProvider;
+        _candidatePipeline = new CandidatePipeline(
+        [
+            new AccessibilityCandidateProviderAdapter(accessibilityElementProvider)
+        ]);
         _inputInjectionService = inputInjectionService;
         _displayService = displayService;
         _permissionService = permissionService;
         _settingsStore = settingsStore;
         _logger = logger;
+        _actionExecutor = new ActionExecutor(_inputInjectionService, _permissionService, _logger);
 
         _hotkeyService.HotkeyPressed += OnHotkeyPressed;
     }
@@ -88,7 +93,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         {
             lock (_sync)
             {
-                return _state;
+                return _stateMachine.State;
             }
         }
     }
@@ -143,7 +148,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             }
 
             targetForSession = _settings.DefaultAnalysisTarget;
-            _state = SessionState.CaptureContext;
+            _stateMachine.TransitionTo(SessionState.CaptureContext);
         }
 
         var permissions = _permissionService.GetCurrentStatus();
@@ -180,7 +185,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 IsPreparing = true,
                 CaptureMs = captureStopwatch.ElapsedMilliseconds
             };
-            _state = SessionState.OverlayActive;
+            _stateMachine.TransitionTo(SessionState.OverlayActive);
         }
 
         if (!EnsureHotkeyListenerRegistered())
@@ -209,7 +214,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 return;
             }
 
-            _state = SessionState.Analyze;
+            _stateMachine.TransitionTo(SessionState.Analyze);
         }
 
         var analyzeStopwatch = Stopwatch.StartNew();
@@ -229,7 +234,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 _session.IsPreparing = false;
                 _session.AnalyzeMs = analyzeStopwatch.ElapsedMilliseconds;
                 _session.OverlayMs = totalStopwatch.ElapsedMilliseconds;
-                _state = SessionState.OverlayActive;
+                _stateMachine.TransitionTo(SessionState.OverlayActive);
                 shouldPublishReadyState = true;
             }
         }
@@ -435,7 +440,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             {
                 _lastHotkeyRegistrationResult = result;
             }
-            PublishDiagnostics(message: $"hotkey-register-failed: {result.Reason}", state: _state, permissions: _permissionService.GetCurrentStatus());
+            PublishDiagnostics(message: $"hotkey-register-failed: {result.Reason}", state: _stateMachine.State, permissions: _permissionService.GetCurrentStatus());
             _logger.Warn($"Failed to register hotkey: {result.Reason}");
             return;
         }
@@ -469,7 +474,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         if (!result.Succeeded)
         {
-            PublishDiagnostics(message: $"overlay-hotkey-register-failed: {result.Reason}", state: _state, permissions: _permissionService.GetCurrentStatus());
+            PublishDiagnostics(message: $"overlay-hotkey-register-failed: {result.Reason}", state: _stateMachine.State, permissions: _permissionService.GetCurrentStatus());
             _logger.Warn($"Failed to ensure overlay hotkey listener: {result.Reason}");
             return false;
         }
@@ -507,7 +512,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         catch (Exception ex)
         {
             _logger.Error("Hotkey handler failed.", ex);
-            PublishDiagnostics(message: "hotkey-handler-failed", state: _state, permissions: _permissionService.GetCurrentStatus());
+            PublishDiagnostics(message: "hotkey-handler-failed", state: _stateMachine.State, permissions: _permissionService.GetCurrentStatus());
             EndSessionInternal();
         }
     }
@@ -518,7 +523,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         var analysis = new AnalysisContext(context, targetDisplay, target, targetBounds);
         var candidates = FilterAndSortCandidates(
-            _accessibilityElementProvider.GetActionableElements(analysis),
+            _candidatePipeline.GetActionableElements(analysis),
             targetBounds,
             out var excludedCount,
             out var overlapPrunedCount);
@@ -550,13 +555,13 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 return;
             }
 
-            _state = SessionState.Analyze;
+            _stateMachine.TransitionTo(SessionState.Analyze);
         }
 
         var analyzeStopwatch = Stopwatch.StartNew();
         var analysis = new AnalysisContext(session.Context, session.Display, session.Target, session.TargetBounds);
         var candidates = FilterAndSortCandidates(
-            _accessibilityElementProvider.GetActionableElements(analysis),
+            _candidatePipeline.GetActionableElements(analysis),
             session.TargetBounds,
             out var excludedCount,
             out var overlapPrunedCount);
@@ -581,7 +586,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
             _session.Bindings = candidates.Select((candidate, index) => new HintBinding(labels[index], candidate)).ToList();
             _session.Input = string.Empty;
-            _state = SessionState.OverlayActive;
+            _stateMachine.TransitionTo(SessionState.OverlayActive);
             _session.AnalyzeMs = analyzeStopwatch.ElapsedMilliseconds;
         }
 
@@ -723,28 +728,26 @@ public sealed class ScreenSearchOrchestrator : IDisposable
                 return;
             }
 
-            _state = SessionState.ExecuteAction;
+            _stateMachine.TransitionTo(SessionState.ExecuteAction);
         }
 
         // マウスイベントを送出する前に、オーバーレイが対象を覆わないようにする。
         OverlayStateChanged?.Invoke(null);
         Thread.Sleep(45);
 
-        try
-        {
-            _inputInjectionService.Execute(snapshot.PendingAction, binding.Candidate);
-            PublishDiagnostics(
-                message: $"action-executed:{snapshot.PendingAction}",
+        _ = _actionExecutor.TryExecute(
+            snapshot.PendingAction,
+            binding.Candidate,
+            onSucceeded: (message, permissions) => PublishDiagnostics(
+                message: message,
                 state: SessionState.ExecuteAction,
                 candidateCount: snapshot.Bindings.Count,
                 context: snapshot.Context,
-                permissions: _permissionService.GetCurrentStatus());
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Input injection failed.", ex);
-            PublishDiagnostics(message: "action-execution-failed", state: SessionState.ExecuteAction, permissions: _permissionService.GetCurrentStatus());
-        }
+                permissions: permissions),
+            onFailed: (message, permissions) => PublishDiagnostics(
+                message: message,
+                state: SessionState.ExecuteAction,
+                permissions: permissions));
 
         lock (_sync)
         {
@@ -757,11 +760,11 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             {
                 _session.Input = string.Empty;
                 _session.PendingAction = UiActionType.LeftClick;
-                _state = SessionState.OverlayActive;
+                _stateMachine.TransitionTo(SessionState.OverlayActive);
             }
             else
             {
-                _state = SessionState.End;
+                _stateMachine.TransitionTo(SessionState.End);
             }
         }
 
@@ -780,7 +783,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         lock (_sync)
         {
             _session = null;
-            _state = SessionState.Idle;
+            _stateMachine.TransitionTo(SessionState.Idle);
         }
 
         _hotkeyService.SuppressKeyPropagation = false;

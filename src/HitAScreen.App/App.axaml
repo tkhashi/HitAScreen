@@ -5,5 +5,9 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+    <StyleInclude Source="avares://HitAScreen.App/Styles/Tokens.axaml" />
+    <StyleInclude Source="avares://HitAScreen.App/Styles/Controls.axaml" />
+    <StyleInclude Source="avares://HitAScreen.App/Styles/MainWindowStyles.axaml" />
+    <StyleInclude Source="avares://HitAScreen.App/Styles/OverlayStyles.axaml" />
   </Application.Styles>
 </Application>

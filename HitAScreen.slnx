@@ -7,6 +7,8 @@
     <Project Path="src/HitAScreen.Platform.MacOS/HitAScreen.Platform.MacOS.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/HitAScreen.App.Tests/HitAScreen.App.Tests.csproj" />
     <Project Path="tests/HitAScreen.Core.Tests/HitAScreen.Core.Tests.csproj" />
+    <Project Path="tests/HitAScreen.Platform.ContractTests/HitAScreen.Platform.ContractTests.csproj" />
   </Folder>
 </Solution>

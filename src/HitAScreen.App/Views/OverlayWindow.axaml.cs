@@ -1,14 +1,14 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Layout;
+using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
 using HitAScreen.Platform.Abstractions;
 
 namespace HitAScreen.App;
 
-public sealed class OverlayWindow : Window
+public sealed partial class OverlayWindow : Window
 {
     private const double FrameSideMargin = 6;
     private const double FrameBottomMargin = 6;
@@ -20,7 +20,6 @@ public sealed class OverlayWindow : Window
     private const double FrameAnimationStep = 0.09;
     private const double TwoPi = Math.PI * 2;
 
-    private readonly Grid _root;
     private readonly Border _frameBorder;
     private readonly LinearGradientBrush _frameBrush;
     private readonly DispatcherTimer _frameAnimationTimer;
@@ -34,61 +33,24 @@ public sealed class OverlayWindow : Window
 
     public OverlayWindow()
     {
-        SystemDecorations = SystemDecorations.None;
-        WindowStartupLocation = WindowStartupLocation.Manual;
-        ShowInTaskbar = false;
-        Topmost = true;
-        CanResize = false;
-        ShowActivated = false;
-        Focusable = false;
-        Background = Brushes.Transparent;
-        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
-        IsHitTestVisible = true;
+        InitializeComponent();
 
-        _root = new Grid
-        {
-            IsHitTestVisible = true
-        };
+        _frameBorder = this.FindControl<Border>("FrameBorder")
+            ?? throw new InvalidOperationException("FrameBorder が見つかりません。");
+        _hintCanvas = this.FindControl<Canvas>("HintCanvas")
+            ?? throw new InvalidOperationException("HintCanvas が見つかりません。");
+        _statusText = this.FindControl<TextBlock>("StatusText")
+            ?? throw new InvalidOperationException("StatusText が見つかりません。");
 
         _frameBrush = CreateFrameBrush();
-        _frameBorder = new Border
-        {
-            BorderBrush = _frameBrush,
-            BorderThickness = new Thickness(IdleFrameThickness),
-            CornerRadius = new CornerRadius(14),
-            Margin = new Thickness(FrameSideMargin, FrameTopMargin, FrameSideMargin, FrameBottomMargin),
-            BoxShadow = CreateIdleFrameShadow(),
-            IsHitTestVisible = false
-        };
+        _frameBorder.BorderBrush = _frameBrush;
+        _frameBorder.BoxShadow = CreateIdleFrameShadow();
 
         _frameAnimationTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(33)
         };
         _frameAnimationTimer.Tick += OnFrameAnimationTick;
-
-        _hintCanvas = new Canvas
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            IsHitTestVisible = false
-        };
-
-        _statusText = new TextBlock
-        {
-            Foreground = Brushes.White,
-            FontSize = 14,
-            Margin = new Thickness(12),
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            IsHitTestVisible = false
-        };
-
-        _root.Children.Add(_frameBorder);
-        _root.Children.Add(_hintCanvas);
-        _root.Children.Add(_statusText);
-
-        Content = _root;
 
         KeyDown += OnKeyDown;
         PointerPressed += OnPointerPressed;
@@ -100,6 +62,8 @@ public sealed class OverlayWindow : Window
         };
         Closed += (_, _) => _frameAnimationTimer.Stop();
     }
+
+    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
     public event Action<char>? CharacterTyped;
     public event Action? BackspacePressed;
@@ -119,6 +83,7 @@ public sealed class OverlayWindow : Window
 
     public void Render(OverlayViewState state, LabelAppearanceSettings appearance, double labelScale)
     {
+        // UI-02 例外: オーバーレイは座標・DPI・入力状態に応じた実行時計算が必須。
         _lastState = state;
         _lastAppearance = appearance;
         _lastLabelScale = labelScale;
@@ -158,22 +123,17 @@ public sealed class OverlayWindow : Window
             var textBlock = new TextBlock
             {
                 Text = hint.Label,
-                FontWeight = FontWeight.Bold,
+                Classes = { "overlay-hint-text" },
                 FontSize = metrics.FontSize,
-                Foreground = hint.MatchesInput ? matchedForeground : normalForeground,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextAlignment = TextAlignment.Center
+                Foreground = hint.MatchesInput ? matchedForeground : normalForeground
             };
 
             var border = new Border
             {
+                Classes = { "overlay-hint-border" },
                 Background = hint.MatchesInput
                     ? new SolidColorBrush(matchedBackground)
                     : new SolidColorBrush(normalBackground),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(220, 12, 20, 26)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
                 MinWidth = metrics.MinWidth,
                 MinHeight = metrics.MinHeight,
                 Padding = new Thickness(metrics.HorizontalPadding, metrics.VerticalPadding),
@@ -369,6 +329,7 @@ public sealed class OverlayWindow : Window
 
     private static LinearGradientBrush CreateFrameBrush()
     {
+        // UI-02 例外: 解析中アニメーション位相でグラデーション開始点/終了点を動的更新する。
         return new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0.0, 0.0, RelativeUnit.Relative),
@@ -388,6 +349,7 @@ public sealed class OverlayWindow : Window
 
     private static BoxShadows CreatePreparingFrameShadow()
     {
+        // UI-02 例外: 準備中の状態遷移に合わせて影表現を動的切替する。
         return new BoxShadows(
             new BoxShadow
             {
@@ -412,6 +374,7 @@ public sealed class OverlayWindow : Window
 
     private static BoxShadows CreateIdleFrameShadow()
     {
+        // UI-02 例外: 準備中/通常で影を切替するため実行時に生成する。
         return new BoxShadows(new BoxShadow
         {
             OffsetX = 0,

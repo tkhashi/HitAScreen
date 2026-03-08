@@ -9,7 +9,7 @@
   <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="10" Margin="16">
     <TextBlock Text="Hit A Screen Control Panel" FontSize="22" FontWeight="SemiBold" />
 
-    <Border Grid.Row="1" BorderThickness="1" BorderBrush="#304050" CornerRadius="8" Padding="12">
+    <Border Grid.Row="1" Classes="panel-card">
       <TabControl>
         <TabItem Header="基本">
           <ScrollViewer>
@@ -19,7 +19,7 @@
                 <Button Name="HotkeyCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="HotkeyResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="HotkeyErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="HotkeyErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="Default Analysis Target" />
               <ComboBox Name="TargetComboBox" SelectedIndex="0">
@@ -36,56 +36,56 @@
         <TabItem Header="ショートカット">
           <ScrollViewer>
             <StackPanel Spacing="10" Margin="2">
-              <TextBlock Text="オーバーレイ操作キー" FontSize="16" FontWeight="SemiBold" />
+              <TextBlock Text="オーバーレイ操作キー" Classes="section-title" />
 
               <TextBlock Text="モニタ左切替" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="MonitorLeftCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="MonitorLeftResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="MonitorLeftErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="MonitorLeftErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="モニタ右切替" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="MonitorRightCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="MonitorRightResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="MonitorRightErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="MonitorRightErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="再解析キー" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="ReanalyzeCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="ReanalyzeResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="ReanalyzeErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="ReanalyzeErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="アクション: 左クリック" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="ActionLeftCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="ActionLeftResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="ActionLeftErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="ActionLeftErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="アクション: 右クリック" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="ActionRightCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="ActionRightResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="ActionRightErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="ActionRightErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="アクション: ダブルクリック" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="ActionDoubleCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="ActionDoubleResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="ActionDoubleErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="ActionDoubleErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="アクション: フォーカス" />
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Button Name="ActionFocusCaptureButton" HorizontalAlignment="Stretch" />
                 <Button Grid.Column="1" Name="ActionFocusResetButton" Content="既定値" />
               </Grid>
-              <TextBlock Name="ActionFocusErrorTextBlock" Foreground="#C53A3A" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="ActionFocusErrorTextBlock" Classes="error-text" />
 
               <TextBlock Text="固定キー (編集不可): ESC / Enter / Backspace" FontStyle="Italic" />
             </StackPanel>
@@ -95,8 +95,8 @@
         <TabItem Header="表示">
           <Grid RowDefinitions="Auto,*" RowSpacing="10">
             <StackPanel Grid.Row="0" Spacing="6" Margin="2">
-              <TextBlock Text="ラベルプレビュー" FontSize="16" FontWeight="SemiBold" />
-              <Border BorderBrush="#505C70" BorderThickness="1" CornerRadius="8" Padding="12" Background="#20252D">
+              <TextBlock Text="ラベルプレビュー" Classes="section-title" />
+              <Border Classes="preview-card">
                 <Grid Height="160" ClipToBounds="True">
                   <Grid Name="PreviewLayoutGrid" ColumnDefinitions="Auto,Auto" ColumnSpacing="12" HorizontalAlignment="Left" VerticalAlignment="Center">
                     <Border Name="PreviewNormalLabelBorder" CornerRadius="4">
@@ -134,7 +134,7 @@
                   </ColorPicker>
                   <TextBlock Name="LabelNormalColorValueTextBlock" VerticalAlignment="Center" />
                 </StackPanel>
-                <TextBlock Text="最近使った色 (最大10)" FontSize="12" />
+                <TextBlock Text="最近使った色 (最大10)" Classes="small-note" />
                 <WrapPanel Name="NormalRecentColorsPanel" />
 
                 <TextBlock Text="ラベル一致色" />
@@ -144,7 +144,7 @@
                   </ColorPicker>
                   <TextBlock Name="LabelMatchedColorValueTextBlock" VerticalAlignment="Center" />
                 </StackPanel>
-                <TextBlock Text="最近使った色 (最大10)" FontSize="12" />
+                <TextBlock Text="最近使った色 (最大10)" Classes="small-note" />
                 <WrapPanel Name="MatchedRecentColorsPanel" />
               </StackPanel>
             </ScrollViewer>
@@ -154,7 +154,7 @@
         <TabItem Header="権限">
           <ScrollViewer>
             <StackPanel Spacing="10" Margin="2">
-              <TextBlock Text="権限状態" FontSize="16" FontWeight="SemiBold" />
+              <TextBlock Text="権限状態" Classes="section-title" />
               <TextBlock Name="AccessibilityPermissionTextBlock" />
               <TextBlock Name="InputMonitoringPermissionTextBlock" />
               <TextBlock Name="ScreenRecordingPermissionTextBlock" TextWrapping="Wrap" />
@@ -196,7 +196,7 @@
               <TextBlock Text="Suppressed Processes (comma separated, e.g. Vivaldi, Steam)" TextWrapping="Wrap" />
               <TextBox Name="SuppressedProcessTextBox" AcceptsReturn="True" Height="90" />
 
-              <TextBlock Text="Diagnostics" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
+              <TextBlock Text="Diagnostics" Classes="section-title" Margin="0,8,0,0" />
               <TextBox Name="DiagnosticsTextBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Height="220" />
             </StackPanel>
           </ScrollViewer>

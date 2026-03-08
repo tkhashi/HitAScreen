@@ -1,7 +1,7 @@
 # ADR: HitAScreen アーキテクチャ決定記録
 
 - ステータス: Accepted
-- 日付: 2026-03-02
+- 日付: 2026-03-08
 - 対象: macOS 実装（将来 Windows 拡張を前提）
 
 ## 1. 背景
@@ -13,12 +13,14 @@
 
 - `HitAScreen.App`
   - Avalonia UI（トレイ、設定画面、オーバーレイ）
+  - `Styles/*.axaml` と `Views/*.axaml` を中心に UI を構成
   - Core のイベント購読と表示反映
 - `HitAScreen.Core`
   - セッション状態遷移（Idle -> CaptureContext -> Analyze -> OverlayActive -> ExecuteAction -> End）
   - ラベル生成、抑制判定、実行オーケストレーション
+  - `CandidatePipeline` による候補ソース集約
 - `HitAScreen.Platform.Abstractions`
-  - OS 非依存インターフェース（`IHotkeyService` 等）
+  - OS 非依存インターフェース（`IHotkeyService` 等）と契約 DTO
 - `HitAScreen.Platform.MacOS`
   - EventTap、Accessibility API、CGEvent などの P/Invoke 実装
 - `HitAScreen.Infrastructure`
@@ -57,10 +59,16 @@
 - 理由:
   - 要件のプライバシー制約（FR-3.3、NFR-4）を満たすため。
 
+### 3.6 候補抽出はパイプラインで拡張可能にする
+- 決定:
+  - Core は `CandidatePipeline` 経由で候補を取得し、候補ソースは `ICandidateProvider` で追加可能にする。
+- 理由:
+  - OCR/画像検出など新ソース追加時に Core の変更範囲を最小化するため。
+
 ## 4. データフロー
 1. `IHotkeyService` が起動ホットキー検知
 2. Core が `IActiveWindowService` で前面文脈を取得（失敗時フォールバック）
-3. Core が `IAccessibilityElementProvider` で候補抽出
+3. Core が `CandidatePipeline` で候補抽出
 4. Core がラベル生成し `OverlayViewState` を UI に通知
 5. 入力確定で Core が `IInputInjectionService` を呼び出し操作実行
 
@@ -79,3 +87,25 @@
 - 今後:
   - `TASK.md` の Phase A〜D を順に実施。
   - OCR/画像検出は別 ADR で再評価する。
+
+## 7. アーキテクチャ運用ルール
+
+### UI ルール
+- `UI-01`:
+  - 色/余白/フォント/境界線/影/角丸などの固定スタイルは `src/HitAScreen.App/Styles/*.axaml` に定義する。
+- `UI-02`:
+  - CS での見た目処理は、座標・DPI・アニメ位相・ランタイム色算出などの実行時計算が必要な場合に限定する。
+- `UI-03`:
+  - `UI-02` 例外を使うメソッドには、冒頭に理由コメント（`UI-02 例外:`）を必須とする。
+
+### 依存方向ルール
+- `ARCH-01`:
+  - 依存方向は `App -> Core -> Platform.Abstractions` を基本とし、`Infrastructure` と `Platform.*` は `Platform.Abstractions` のみに依存する。
+- `ARCH-02`:
+  - `Platform.Abstractions` は契約と DTO のみを保持し、正規化・業務ロジックは配置しない。
+- `ARCH-03`:
+  - 新機能追加時は巨大クラスへの追記を避け、`Analysis` / `Execution` など責務単位のクラスに分割して実装する。
+
+### テスト/CI ルール
+- `TEST-01`:
+  - UI ルール違反と依存境界違反を自動テストで検知し、CI で失敗させる。

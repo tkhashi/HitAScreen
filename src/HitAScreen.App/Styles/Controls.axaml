@@ -1,0 +1,49 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="TextBlock.error-text">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.ErrorText}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <Style Selector="Border.panel-card">
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.PanelBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+
+  <Style Selector="Border.preview-card">
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.PreviewBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="12" />
+    <Setter Property="Background" Value="{DynamicResource Brush.PreviewBackground}" />
+  </Style>
+
+  <Style Selector="Button.recent-color-swatch">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="{DynamicResource Thickness.RecentColorSwatchMargin}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.RecentColorSwatchBorder}" />
+  </Style>
+
+  <Style Selector="TextBlock.recent-color-empty">
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+
+  <Style Selector="Border.overlay-hint-border">
+    <Setter Property="BorderBrush" Value="#DC0C141A" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <Style Selector="TextBlock.overlay-hint-text">
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+</Styles>
