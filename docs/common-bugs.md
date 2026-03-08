@@ -1,6 +1,6 @@
 # よく発生する不具合メモ
 
-最終更新: 2026-03-08 (branch: `codex/tabbed-settings-ui`)
+最終更新: 2026-03-08 (branch: `codex/fix-finder-overlay-and-browser-ax`)
 
 ## 1. オーバーレイは表示されるがラベルが出ない
 - 事象:
@@ -51,6 +51,22 @@
   - 追加ログ:
     - `session-start-without-accessibility-permission`
     - `overlay-input-unavailable: continue-without-suppression`
+
+## 5. Finder だけキーが伝搬する / ブラウザでラベルが3件固定になる
+- 発生事象:
+  - Finder 前面時のみ、オーバーレイ表示後のラベル入力が Finder 側へ流れ、オーバーレイ入力が進まない。
+  - Chrome / Safari 等で、ラベルが最小化・最大化・閉じるの 3 件付近に偏る。
+- 原因:
+  - `MacHotkeyService.OnEvent()` でホットキーイベント内から `StartSession()` が同期実行され、重い解析時に EventTap が無効化されるケースがあった。
+  - `MacAccessibilityElementProvider` の候補化条件が厳しく、`AXChildren` + `AXPosition/AXSize` + `AXPress` 前提になっていたため、ブラウザで露出する `AXVisibleChildren` / `AXContents` / `AXFrame` 系の要素を取りこぼしていた。
+- 修正内容:
+  - ホットキー一致時のハンドラ呼び出しを ThreadPool へオフロードし、EventTap コールバックを即時復帰させる。
+  - `kCGEventTapDisabledByTimeout` / `kCGEventTapDisabledByUserInput` を検知したら `CGEventTapEnable(..., true)` で再有効化する。
+  - `SuppressKeyPropagation` を `Volatile.Read/Write` 化して、抑止フラグのスレッド間可視性を担保する。
+  - `AXEnhancedUserInterface=true` を安全に設定する。
+  - 子要素探索を `AXChildren` に加えて `AXVisibleChildren` / `AXContents` まで拡張する。
+  - 座標取得で `AXPosition/AXSize` が取れない場合に `AXFrame` をフォールバック参照する。
+  - ブラウザプロセス時は、ブラウザ系ロール・アクションあり要素も候補化対象に含める。
 
 ## 運用メモ
 - 権限関連の不具合は「権限再取得 → アプリ再起動」で解消するケースが多い。

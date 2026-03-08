@@ -6,9 +6,11 @@ namespace HitAScreen.Platform.MacOS;
 public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvider
 {
     private const uint Utf8Encoding = 0x08000100;
+    private const int DlopenLazy = 1;
     private const int MaxAxNodeCount = 4000;
     private const double MessagingTimeoutSeconds = 2.0;
 
+    private static readonly object CfBooleanSync = new();
     private static readonly HashSet<string> ClickableRoles = new(StringComparer.Ordinal)
     {
         "AXButton",
@@ -20,6 +22,45 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         "AXPopUpButton",
         "AXDisclosureTriangle"
     };
+
+    private static readonly HashSet<string> BrowserLikeRoles = new(StringComparer.Ordinal)
+    {
+        "AXStaticText",
+        "AXLink",
+        "AXTextField",
+        "AXTextArea",
+        "AXHeading",
+        "AXImage",
+        "AXList",
+        "AXListItem",
+        "AXRow",
+        "AXCell",
+        "AXButton"
+    };
+
+    private static readonly HashSet<string> ActionableActions = new(StringComparer.Ordinal)
+    {
+        "AXPress",
+        "AXConfirm",
+        "AXOpen",
+        "AXPick",
+        "AXShowMenu"
+    };
+
+    private static readonly HashSet<string> BrowserProcessNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Safari",
+        "Google Chrome",
+        "Chromium",
+        "Microsoft Edge",
+        "Brave Browser",
+        "Vivaldi",
+        "Firefox",
+        "Arc",
+        "Opera"
+    };
+
+    private static IntPtr _kCfBooleanTrue;
 
     public IReadOnlyList<UiCandidate> GetActionableElements(AnalysisContext context)
     {
@@ -42,6 +83,7 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         try
         {
             NativeMethods.AXUIElementSetMessagingTimeout(appElement, MessagingTimeoutSeconds);
+            TryEnableEnhancedUserInterface(appElement);
 
             var targetWindow = FindTargetWindowElement(appElement, context.ActiveWindow);
             if (targetWindow == IntPtr.Zero)
@@ -49,11 +91,84 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
                 return Array.Empty<UiCandidate>();
             }
 
-            return EnumerateCandidates(targetWindow, context.TargetBounds);
+            return EnumerateCandidates(
+                targetWindow,
+                context.TargetBounds,
+                IsBrowserProcessName(context.ActiveWindow.ProcessName));
         }
         finally
         {
             NativeMethods.CFRelease(appElement);
+        }
+    }
+
+    private static void TryEnableEnhancedUserInterface(IntPtr appElement)
+    {
+        try
+        {
+            var trueValue = GetCfBooleanTrue();
+            if (trueValue == IntPtr.Zero)
+            {
+                return;
+            }
+
+            var attributeRef = CreateCfString("AXEnhancedUserInterface");
+            if (attributeRef == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                _ = NativeMethods.AXUIElementSetAttributeValue(appElement, attributeRef, trueValue);
+            }
+            finally
+            {
+                NativeMethods.CFRelease(attributeRef);
+            }
+        }
+        catch
+        {
+            // 失敗しても従来動作を継続する。
+        }
+    }
+
+    private static IntPtr GetCfBooleanTrue()
+    {
+        if (_kCfBooleanTrue != IntPtr.Zero)
+        {
+            return _kCfBooleanTrue;
+        }
+
+        lock (CfBooleanSync)
+        {
+            if (_kCfBooleanTrue != IntPtr.Zero)
+            {
+                return _kCfBooleanTrue;
+            }
+
+            try
+            {
+                var handle = NativeMethods.dlopen(NativeMethods.CoreFoundation, DlopenLazy);
+                if (handle == IntPtr.Zero)
+                {
+                    return IntPtr.Zero;
+                }
+
+                var symbol = NativeMethods.dlsym(handle, "kCFBooleanTrue");
+                if (symbol == IntPtr.Zero)
+                {
+                    return IntPtr.Zero;
+                }
+
+                _kCfBooleanTrue = Marshal.ReadIntPtr(symbol);
+            }
+            catch
+            {
+                return IntPtr.Zero;
+            }
+
+            return _kCfBooleanTrue;
         }
     }
 
@@ -106,7 +221,10 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         return IntPtr.Zero;
     }
 
-    private static IReadOnlyList<UiCandidate> EnumerateCandidates(IntPtr root, ScreenRect targetBounds)
+    private static IReadOnlyList<UiCandidate> EnumerateCandidates(
+        IntPtr root,
+        ScreenRect targetBounds,
+        bool browserLikeProcess)
     {
         var results = new List<UiCandidate>();
         var queue = new Queue<(IntPtr Element, int Depth)>();
@@ -132,13 +250,26 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
                 var actions = CopyActionNames(element);
                 var (x, y) = CopyAttributePositionNullable(element, "AXPosition");
                 var (w, h) = CopyAttributeSizeNullable(element, "AXSize");
+                if (!x.HasValue || !y.HasValue || !w.HasValue || !h.HasValue)
+                {
+                    var (fx, fy, fw, fh) = CopyAttributeFrameNullable(element, "AXFrame");
+                    x ??= fx;
+                    y ??= fy;
+                    w ??= fw;
+                    h ??= fh;
+                }
 
                 var bounds = x.HasValue && y.HasValue && w.HasValue && h.HasValue
                     ? new ScreenRect(x.Value, y.Value, w.Value, h.Value)
                     : default;
 
                 var hasBounds = w.GetValueOrDefault() > 2 && h.GetValueOrDefault() > 2;
-                var isActionable = hasBounds && (ClickableRoles.Contains(role) || actions.Contains("AXPress", StringComparison.Ordinal));
+                var hasActionableAction = HasActionableAction(actions);
+                var hasAnyAction = !string.IsNullOrWhiteSpace(actions);
+                var roleActionable = ClickableRoles.Contains(role)
+                    || hasActionableAction
+                    || (browserLikeProcess && (BrowserLikeRoles.Contains(role) || hasAnyAction));
+                var isActionable = hasBounds && roleActionable;
 
                 if (isActionable && bounds.Intersects(targetBounds))
                 {
@@ -153,11 +284,10 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
                         Source: CandidateSource.Accessibility));
                 }
 
-                var children = CopyAttributeArray(element, "AXChildren");
-                foreach (var child in children)
-                {
-                    queue.Enqueue((child, depth + 1));
-                }
+                var deduplicatedChildren = new HashSet<nint>();
+                EnqueueChildren(element, "AXChildren", depth + 1, queue, deduplicatedChildren);
+                EnqueueChildren(element, "AXVisibleChildren", depth + 1, queue, deduplicatedChildren);
+                EnqueueChildren(element, "AXContents", depth + 1, queue, deduplicatedChildren);
             }
             finally
             {
@@ -166,6 +296,27 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         }
 
         return results;
+    }
+
+    private static void EnqueueChildren(
+        IntPtr element,
+        string attribute,
+        int depth,
+        Queue<(IntPtr Element, int Depth)> queue,
+        HashSet<nint> deduplicatedChildren)
+    {
+        var children = CopyAttributeArray(element, attribute);
+        foreach (var child in children)
+        {
+            if (deduplicatedChildren.Add(child))
+            {
+                queue.Enqueue((child, depth));
+            }
+            else
+            {
+                NativeMethods.CFRelease(child);
+            }
+        }
     }
 
     private static List<IntPtr> CopyAttributeArray(IntPtr element, string attribute)
@@ -309,6 +460,37 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         }
     }
 
+    private static (double? X, double? Y, double? Width, double? Height) CopyAttributeFrameNullable(IntPtr element, string attribute)
+    {
+        var attrRef = CreateCfString(attribute);
+        try
+        {
+            if (NativeMethods.AXUIElementCopyAttributeValue(element, attrRef, out var valueRef) != NativeMethods.AXError.Success || valueRef == IntPtr.Zero)
+            {
+                return (null, null, null, null);
+            }
+
+            try
+            {
+                var rect = new NativeMethods.CgRect();
+                if (!NativeMethods.AXValueGetValue(valueRef, NativeMethods.AXValueType.CgRect, ref rect))
+                {
+                    return (null, null, null, null);
+                }
+
+                return (rect.Origin.X, rect.Origin.Y, rect.Size.Width, rect.Size.Height);
+            }
+            finally
+            {
+                NativeMethods.CFRelease(valueRef);
+            }
+        }
+        finally
+        {
+            NativeMethods.CFRelease(attrRef);
+        }
+    }
+
     private static string CopyActionNames(IntPtr element)
     {
         if (NativeMethods.AXUIElementCopyActionNames(element, out var actRef) != NativeMethods.AXError.Success || actRef == IntPtr.Zero)
@@ -335,6 +517,28 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         {
             NativeMethods.CFRelease(actRef);
         }
+    }
+
+    private static bool HasActionableAction(string actions)
+    {
+        if (string.IsNullOrWhiteSpace(actions))
+        {
+            return false;
+        }
+
+        return actions
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Any(action => ActionableActions.Contains(action));
+    }
+
+    private static bool IsBrowserProcessName(string processName)
+    {
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            return false;
+        }
+
+        return BrowserProcessNames.Contains(processName);
     }
 
     private static IntPtr CreateCfString(string value) => NativeMethods.CFStringCreateWithCString(IntPtr.Zero, value, Utf8Encoding);
@@ -368,8 +572,9 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
 
     private static class NativeMethods
     {
+        internal const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
         private const string AppServices = "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
-        private const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+        private const string LibSystem = "/usr/lib/libSystem.B.dylib";
 
         internal enum AXError
         {
@@ -379,7 +584,8 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
         internal enum AXValueType
         {
             CgPoint = 1,
-            CgSize = 2
+            CgSize = 2,
+            CgRect = 3
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -396,6 +602,13 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
             public double Height;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct CgRect
+        {
+            public CgPoint Origin;
+            public CgSize Size;
+        }
+
         [DllImport(AppServices)]
         internal static extern bool AXIsProcessTrusted();
 
@@ -404,6 +617,9 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
 
         [DllImport(AppServices)]
         internal static extern AXError AXUIElementCopyAttributeValue(IntPtr element, IntPtr attribute, out IntPtr value);
+
+        [DllImport(AppServices)]
+        internal static extern AXError AXUIElementSetAttributeValue(IntPtr element, IntPtr attribute, IntPtr value);
 
         [DllImport(AppServices)]
         internal static extern AXError AXUIElementCopyActionNames(IntPtr element, out IntPtr actions);
@@ -416,6 +632,9 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
 
         [DllImport(AppServices)]
         internal static extern bool AXValueGetValue(IntPtr value, AXValueType type, ref CgSize size);
+
+        [DllImport(AppServices)]
+        internal static extern bool AXValueGetValue(IntPtr value, AXValueType type, ref CgRect rect);
 
         [DllImport(CoreFoundation)]
         internal static extern IntPtr CFStringCreateWithCString(IntPtr allocator, string value, uint encoding);
@@ -440,5 +659,11 @@ public sealed class MacAccessibilityElementProvider : IAccessibilityElementProvi
 
         [DllImport(CoreFoundation)]
         internal static extern IntPtr CFRetain(IntPtr value);
+
+        [DllImport(LibSystem)]
+        internal static extern IntPtr dlopen(string path, int mode);
+
+        [DllImport(LibSystem)]
+        internal static extern IntPtr dlsym(IntPtr handle, string symbol);
     }
 }

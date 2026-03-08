@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 using HitAScreen.Platform.Abstractions;
 
 namespace HitAScreen.Platform.MacOS;
@@ -17,6 +18,7 @@ public sealed class MacHotkeyService : IHotkeyService
     private bool _disposed;
     private HotkeyChord _hotkey;
     private DateTimeOffset _lastTriggeredAt = DateTimeOffset.MinValue;
+    private int _suppressKeyPropagation;
 
     public MacHotkeyService()
     {
@@ -25,7 +27,11 @@ public sealed class MacHotkeyService : IHotkeyService
     }
 
     public bool IsRegistered { get; private set; }
-    public bool SuppressKeyPropagation { get; set; }
+    public bool SuppressKeyPropagation
+    {
+        get => Volatile.Read(ref _suppressKeyPropagation) == 1;
+        set => Volatile.Write(ref _suppressKeyPropagation, value ? 1 : 0);
+    }
 
     public event Action? HotkeyPressed;
     public event Action<GlobalKeyEvent>? KeyPressed;
@@ -207,7 +213,24 @@ public sealed class MacHotkeyService : IHotkeyService
 
     private IntPtr OnEvent(IntPtr proxy, uint eventTypeRaw, IntPtr cgEvent, IntPtr userInfo)
     {
-        if ((EventType)eventTypeRaw != EventType.KeyDown)
+        var eventType = (EventType)eventTypeRaw;
+        if (eventType is EventType.TapDisabledByTimeout or EventType.TapDisabledByUserInput)
+        {
+            IntPtr tap;
+            lock (_sync)
+            {
+                tap = _tap;
+            }
+
+            if (tap != IntPtr.Zero)
+            {
+                CGEventTapEnable(tap, true);
+            }
+
+            return cgEvent;
+        }
+
+        if (eventType != EventType.KeyDown)
         {
             return cgEvent;
         }
@@ -221,7 +244,14 @@ public sealed class MacHotkeyService : IHotkeyService
             if (DateTimeOffset.UtcNow - _lastTriggeredAt > TimeSpan.FromMilliseconds(250))
             {
                 _lastTriggeredAt = DateTimeOffset.UtcNow;
-                HotkeyPressed?.Invoke();
+                var handler = HotkeyPressed;
+                if (handler is not null)
+                {
+                    _ = ThreadPool.UnsafeQueueUserWorkItem(
+                        static state => ((Action)state!).Invoke(),
+                        handler,
+                        preferLocal: false);
+                }
             }
 
             return IntPtr.Zero;
@@ -319,9 +349,11 @@ public sealed class MacHotkeyService : IHotkeyService
         ListenOnly = 1
     }
 
-    private enum EventType
+    private enum EventType : uint
     {
-        KeyDown = 10
+        KeyDown = 10,
+        TapDisabledByTimeout = 0xFFFFFFFE,
+        TapDisabledByUserInput = 0xFFFFFFFF
     }
 
     private enum CGEventField
