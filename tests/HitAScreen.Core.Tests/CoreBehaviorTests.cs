@@ -106,7 +106,13 @@ public sealed class CoreBehaviorTests
     {
         var hotkey = new FakeHotkeyService();
         var activeWindow = new FakeActiveWindowService { Context = null };
-        var provider = new FakeAccessibilityProvider();
+        var provider = new FakeAccessibilityProvider
+        {
+            Candidates =
+            [
+                new UiCandidate("fallback-candidate", new ScreenRect(120, 80, 40, 20), "AXButton", null, "Fallback", "AXPress", 0.9, CandidateSource.Accessibility)
+            ]
+        };
         var input = new FakeInputInjectionService();
         var display = new FakeDisplayService();
         var permissions = new FakePermissionService();
@@ -130,6 +136,46 @@ public sealed class CoreBehaviorTests
         Assert.NotNull(sessionStart);
         Assert.NotNull(sessionStart!.Context);
         Assert.Equal("foreground-window-not-available", sessionStart.Context!.FallbackReason);
+    }
+
+    [Fact]
+    public async Task Orchestrator_UsesDisplayBounds_WhenActiveWindowBoundsAreInvalid()
+    {
+        var hotkey = new FakeHotkeyService();
+        var activeWindow = new FakeActiveWindowService
+        {
+            Context = new ActiveWindowContext(
+                42,
+                123,
+                "Editor",
+                null,
+                "InvalidBounds",
+                new ScreenRect(10, 20, 0, 0),
+                "display-1",
+                2,
+                true)
+        };
+        var provider = new FakeAccessibilityProvider();
+        var input = new FakeInputInjectionService();
+        var display = new FakeDisplayService();
+        var permissions = new FakePermissionService();
+        var store = new InMemorySettingsStore(new UserSettings
+        {
+            DefaultAnalysisTarget = AnalysisTarget.ActiveWindow
+        });
+        var logger = new TestLogger();
+
+        var orchestrator = new ScreenSearchOrchestrator(hotkey, activeWindow, provider, input, display, permissions, store, logger);
+
+        OverlayViewState? latest = null;
+        orchestrator.OverlayStateChanged += state => latest = state;
+
+        await orchestrator.InitializeAsync();
+        orchestrator.StartSession();
+
+        Assert.NotNull(latest);
+        Assert.Equal(1920, latest!.TargetBounds.Width);
+        Assert.Equal(1080, latest.TargetBounds.Height);
     }
 
     [Fact]
@@ -185,6 +231,55 @@ public sealed class CoreBehaviorTests
 
         orchestrator.HandleCharacter('A');
         Assert.Equal(1, input.ExecutionCount);
+    }
+
+    [Fact]
+    public async Task Orchestrator_StartsSession_AndEmitsWarning_WhenAccessibilityPermissionMissing()
+    {
+        var hotkey = new FakeHotkeyService();
+        var activeWindow = new FakeActiveWindowService
+        {
+            Context = new ActiveWindowContext(
+                1,
+                100,
+                "TestApp",
+                null,
+                "Window",
+                new ScreenRect(0, 0, 1200, 800),
+                "display-1",
+                2.0,
+                true)
+        };
+        var provider = new FakeAccessibilityProvider
+        {
+            Candidates =
+            [
+                new UiCandidate("candidate", new ScreenRect(100, 100, 80, 24), "AXButton", null, "Button", "AXPress", 0.8, CandidateSource.Accessibility)
+            ]
+        };
+        var display = new FakeDisplayService();
+        var logger = new TestLogger();
+        var store = new InMemorySettingsStore();
+        var permissions = new DeniedPermissionService();
+
+        var orchestrator = new ScreenSearchOrchestrator(hotkey, activeWindow, provider, new FakeInputInjectionService(), display, permissions, store, logger);
+        SessionDiagnostics? warning = null;
+        OverlayViewState? latest = null;
+        orchestrator.DiagnosticsChanged += diagnostics =>
+        {
+            if (diagnostics.Message?.StartsWith("session-start-without-accessibility-permission", StringComparison.Ordinal) == true)
+            {
+                warning = diagnostics;
+            }
+        };
+        orchestrator.OverlayStateChanged += state => latest = state;
+
+        await orchestrator.InitializeAsync();
+        orchestrator.StartSession();
+
+        Assert.NotNull(warning);
+        Assert.Equal(SessionState.OverlayActive, orchestrator.State);
+        Assert.NotNull(latest);
     }
 
     private sealed class FakeHotkeyService : IHotkeyService
@@ -250,6 +345,19 @@ public sealed class CoreBehaviorTests
         {
             errorMessage = null;
             return true;
+        }
+    }
+
+    private sealed class DeniedPermissionService : IPermissionService
+    {
+        public PermissionSnapshot GetCurrentStatus() => new(false, false, false);
+
+        public PermissionSnapshot RequestMissingPermissions() => new(false, false, false);
+
+        public bool OpenSystemSettings(PermissionArea area, out string? errorMessage)
+        {
+            errorMessage = null;
+            return false;
         }
     }
 

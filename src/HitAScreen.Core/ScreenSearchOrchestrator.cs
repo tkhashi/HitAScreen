@@ -140,18 +140,20 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _state = SessionState.CaptureContext;
         }
 
+        var permissions = _permissionService.GetCurrentStatus();
+        if (!permissions.AccessibilityGranted)
+        {
+            PublishDiagnostics(
+                message: "session-start-without-accessibility-permission",
+                state: SessionState.CaptureContext,
+                permissions: permissions);
+        }
+
         var totalStopwatch = Stopwatch.StartNew();
         var captureStopwatch = Stopwatch.StartNew();
 
         var capturedContext = _activeWindowService.TryCaptureForegroundWindow();
         var context = capturedContext ?? BuildFallbackContext("foreground-window-not-available");
-
-        if (context is null)
-        {
-            PublishDiagnostics(message: "failed to build session context", state: SessionState.End, permissions: _permissionService.GetCurrentStatus());
-            EndSessionInternal();
-            return;
-        }
 
         context = EnsureContextHasDisplay(context);
         captureStopwatch.Stop();
@@ -182,8 +184,22 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             _state = SessionState.OverlayActive;
         }
 
-        EnsureHotkeyListenerRegistered();
-        _hotkeyService.SuppressKeyPropagation = true;
+        if (!EnsureHotkeyListenerRegistered())
+        {
+            PublishDiagnostics(
+                message: "overlay-input-unavailable: continue-without-suppression",
+                state: SessionState.OverlayActive,
+                captureMs: captureStopwatch.ElapsedMilliseconds,
+                analyzeMs: analyzeStopwatch.ElapsedMilliseconds,
+                overlayReadyMs: totalStopwatch.ElapsedMilliseconds,
+                candidateCount: bindings.Count,
+                context: context,
+                permissions: permissions);
+        }
+        else
+        {
+            _hotkeyService.SuppressKeyPropagation = true;
+        }
 
         totalStopwatch.Stop();
 
@@ -204,7 +220,7 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             overlayReadyMs: totalStopwatch.ElapsedMilliseconds,
             candidateCount: bindings.Count,
             context: context,
-            permissions: _permissionService.GetCurrentStatus());
+            permissions: permissions);
     }
 
     public void CancelSession()
@@ -335,8 +351,14 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
         if (sessionActive)
         {
-            EnsureHotkeyListenerRegistered();
-            _hotkeyService.SuppressKeyPropagation = true;
+            if (EnsureHotkeyListenerRegistered())
+            {
+                _hotkeyService.SuppressKeyPropagation = true;
+            }
+            else
+            {
+                _hotkeyService.SuppressKeyPropagation = false;
+            }
             return;
         }
 
@@ -397,13 +419,13 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         }
     }
 
-    private void EnsureHotkeyListenerRegistered()
+    private bool EnsureHotkeyListenerRegistered()
     {
         var chordChanged = _registeredChord is null || _registeredChord.Value != _settings.Hotkey;
         if (_hotkeyService.IsRegistered && !chordChanged)
         {
             _suppressionActive = false;
-            return;
+            return true;
         }
 
         if (_hotkeyService.IsRegistered)
@@ -421,11 +443,12 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         {
             PublishDiagnostics(message: $"overlay-hotkey-register-failed: {result.Reason}", state: _state, permissions: _permissionService.GetCurrentStatus());
             _logger.Warn($"Failed to ensure overlay hotkey listener: {result.Reason}");
-            return;
+            return false;
         }
 
         _registeredChord = _settings.Hotkey;
         _suppressionActive = false;
+        return true;
     }
 
     public void Dispose()
@@ -471,7 +494,8 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         targetDisplay ??= _displayService.GetDisplayContainingPoint(context.Bounds.Center);
         targetDisplay ??= displays.FirstOrDefault() ?? new DisplayInfo("fallback", context.Bounds, context.DpiScale ?? 1.0, true);
 
-        var targetBounds = target == AnalysisTarget.ActiveWindow ? context.Bounds : targetDisplay.Bounds;
+        var preferredBounds = target == AnalysisTarget.ActiveWindow ? context.Bounds : targetDisplay.Bounds;
+        var targetBounds = ResolveTargetBounds(preferredBounds, targetDisplay.Bounds);
 
         var analysis = new AnalysisContext(context, targetDisplay, target, targetBounds);
         var candidates = FilterAndSortCandidates(
@@ -622,6 +646,16 @@ public sealed class ScreenSearchOrchestrator : IDisposable
 
     private static double CandidateArea(ScreenRect bounds) => Math.Max(1, bounds.Width * bounds.Height);
 
+    private static ScreenRect ResolveTargetBounds(ScreenRect preferred, ScreenRect fallback)
+    {
+        if (preferred.Width <= 1 || preferred.Height <= 1)
+        {
+            return fallback;
+        }
+
+        return preferred;
+    }
+
     private void TryExecuteFromInput()
     {
         ActiveSession? session;
@@ -738,16 +772,14 @@ public sealed class ScreenSearchOrchestrator : IDisposable
         };
     }
 
-    private ActiveWindowContext? BuildFallbackContext(string fallbackReason)
+    private ActiveWindowContext BuildFallbackContext(string fallbackReason)
     {
         var cursor = _displayService.GetCursorPosition();
         var display = _displayService.GetDisplayContainingPoint(cursor)
             ?? _displayService.GetDisplays().FirstOrDefault();
-
-        if (display is null)
-        {
-            return null;
-        }
+        var fallbackBounds = display?.Bounds ?? new ScreenRect(0, 0, 1920, 1080);
+        var fallbackDisplayId = display?.Id ?? "fallback-display";
+        var fallbackScale = display?.DpiScale ?? 1.0;
 
         return new ActiveWindowContext(
             WindowId: 0,
@@ -755,9 +787,9 @@ public sealed class ScreenSearchOrchestrator : IDisposable
             ProcessName: "unknown",
             ExecutablePath: null,
             WindowTitle: "fallback",
-            Bounds: display.Bounds,
-            DisplayId: display.Id,
-            DpiScale: display.DpiScale,
+            Bounds: fallbackBounds,
+            DisplayId: fallbackDisplayId,
+            DpiScale: fallbackScale,
             IsForegroundConfirmed: false,
             FallbackReason: fallbackReason);
     }
