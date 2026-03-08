@@ -33,6 +33,19 @@ public partial class MainWindow : Window
         ActionFocusId
     ];
 
+    private static readonly string[] ExcludableAxRoles =
+    [
+        "AXGroup",
+        "AXButton",
+        "AXLink",
+        "AXMenuItem",
+        "AXTextField",
+        "AXCheckBox",
+        "AXRadioButton",
+        "AXPopUpButton",
+        "AXDisclosureTriangle"
+    ];
+
     private readonly ScreenSearchOrchestrator _orchestrator;
     private readonly IPermissionService _permissionService;
     private readonly ILaunchAtLoginService _launchAtLoginService;
@@ -48,7 +61,7 @@ public partial class MainWindow : Window
     private readonly TextBox _labelCharsetTextBox;
     private readonly Slider _labelScaleSlider;
     private readonly TextBlock _labelScaleValueTextBlock;
-    private readonly TextBox _excludedAxRolesTextBox;
+    private readonly Dictionary<string, CheckBox> _excludedRoleCheckBoxes = new(StringComparer.Ordinal);
     private readonly ColorPicker _labelNormalColorPicker;
     private readonly TextBlock _labelNormalColorValueTextBlock;
     private readonly ColorPicker _labelMatchedColorPicker;
@@ -62,7 +75,6 @@ public partial class MainWindow : Window
     private readonly Border _previewMatchedLabelBorder;
     private readonly TextBlock _previewNormalLabelTextBlock;
     private readonly TextBlock _previewMatchedLabelTextBlock;
-
     private readonly CheckBox _suppressFullscreenCheckBox;
     private readonly CheckBox _continuousModeCheckBox;
     private readonly CheckBox _debugLoggingCheckBox;
@@ -95,7 +107,15 @@ public partial class MainWindow : Window
         _labelCharsetTextBox = RequireTextBox("LabelCharsetTextBox");
         _labelScaleSlider = RequireSlider("LabelScaleSlider");
         _labelScaleValueTextBlock = RequireTextBlock("LabelScaleValueTextBlock");
-        _excludedAxRolesTextBox = RequireTextBox("ExcludedAxRolesTextBox");
+        _excludedRoleCheckBoxes["AXGroup"] = RequireCheckBox("ExcludeAxGroupCheckBox");
+        _excludedRoleCheckBoxes["AXButton"] = RequireCheckBox("ExcludeAxButtonCheckBox");
+        _excludedRoleCheckBoxes["AXLink"] = RequireCheckBox("ExcludeAxLinkCheckBox");
+        _excludedRoleCheckBoxes["AXMenuItem"] = RequireCheckBox("ExcludeAxMenuItemCheckBox");
+        _excludedRoleCheckBoxes["AXTextField"] = RequireCheckBox("ExcludeAxTextFieldCheckBox");
+        _excludedRoleCheckBoxes["AXCheckBox"] = RequireCheckBox("ExcludeAxCheckBoxCheckBox");
+        _excludedRoleCheckBoxes["AXRadioButton"] = RequireCheckBox("ExcludeAxRadioButtonCheckBox");
+        _excludedRoleCheckBoxes["AXPopUpButton"] = RequireCheckBox("ExcludeAxPopUpButtonCheckBox");
+        _excludedRoleCheckBoxes["AXDisclosureTriangle"] = RequireCheckBox("ExcludeAxDisclosureTriangleCheckBox");
         _labelNormalColorPicker = RequireColorPicker("LabelNormalColorPicker");
         _labelNormalColorValueTextBlock = RequireTextBlock("LabelNormalColorValueTextBlock");
         _labelMatchedColorPicker = RequireColorPicker("LabelMatchedColorPicker");
@@ -109,7 +129,6 @@ public partial class MainWindow : Window
         _previewMatchedLabelBorder = RequireBorder("PreviewMatchedLabelBorder");
         _previewNormalLabelTextBlock = RequireTextBlock("PreviewNormalLabelTextBlock");
         _previewMatchedLabelTextBlock = RequireTextBlock("PreviewMatchedLabelTextBlock");
-
         _suppressFullscreenCheckBox = RequireCheckBox("SuppressFullscreenCheckBox");
         _continuousModeCheckBox = RequireCheckBox("ContinuousModeCheckBox");
         _debugLoggingCheckBox = RequireCheckBox("DebugLoggingCheckBox");
@@ -166,7 +185,7 @@ public partial class MainWindow : Window
 
         _targetComboBox.SelectedIndex = normalized.DefaultAnalysisTarget == AnalysisTarget.ActiveWindow ? 1 : 0;
         _labelCharsetTextBox.Text = normalized.LabelCharacterSet;
-        _excludedAxRolesTextBox.Text = string.Join(", ", normalized.ExcludedAxRoles);
+        SetExcludedRoleCheckStates(normalized.ExcludedAxRoles);
 
         _suspendAppearanceEvents = true;
         _labelScaleSlider.Value = normalized.LabelScale;
@@ -571,10 +590,7 @@ public partial class MainWindow : Window
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            var excludedRoles = (_excludedAxRolesTextBox.Text ?? string.Empty)
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+            var excludedRoles = GetSelectedExcludedRoles();
 
             var overlayHotkeys = current.OverlayHotkeys with
             {
@@ -851,6 +867,25 @@ public partial class MainWindow : Window
         }
 
         return value[..maxLength] + "...";
+    }
+
+    private void SetExcludedRoleCheckStates(IReadOnlyList<string> roles)
+    {
+        var selectedRoles = new HashSet<string>(roles, StringComparer.Ordinal);
+        foreach (var role in ExcludableAxRoles)
+        {
+            if (_excludedRoleCheckBoxes.TryGetValue(role, out var checkBox))
+            {
+                checkBox.IsChecked = selectedRoles.Contains(role);
+            }
+        }
+    }
+
+    private string[] GetSelectedExcludedRoles()
+    {
+        return ExcludableAxRoles
+            .Where(role => _excludedRoleCheckBoxes.TryGetValue(role, out var checkBox) && (checkBox.IsChecked ?? false))
+            .ToArray();
     }
 
     private static List<string> DetectShortcutConflicts(UserSettings settings)

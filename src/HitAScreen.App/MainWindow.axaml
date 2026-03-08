@@ -180,8 +180,18 @@
               <CheckBox Name="SuppressFullscreenCheckBox" Content="Suppress hotkey when fullscreen window is active" />
               <CheckBox Name="DebugLoggingCheckBox" Content="Enable persistent debug log" />
 
-              <TextBlock Text="除外 AX Role (カンマ区切り)" />
-              <TextBox Name="ExcludedAxRolesTextBox" AcceptsReturn="True" Height="60" />
+              <TextBlock Text="除外 AX Role (選択式 / 未選択なら除外なし)" />
+              <StackPanel Spacing="4" Margin="0,0,0,4">
+                <CheckBox Name="ExcludeAxGroupCheckBox" Content="AXGroup" />
+                <CheckBox Name="ExcludeAxButtonCheckBox" Content="AXButton" />
+                <CheckBox Name="ExcludeAxLinkCheckBox" Content="AXLink" />
+                <CheckBox Name="ExcludeAxMenuItemCheckBox" Content="AXMenuItem" />
+                <CheckBox Name="ExcludeAxTextFieldCheckBox" Content="AXTextField" />
+                <CheckBox Name="ExcludeAxCheckBoxCheckBox" Content="AXCheckBox" />
+                <CheckBox Name="ExcludeAxRadioButtonCheckBox" Content="AXRadioButton" />
+                <CheckBox Name="ExcludeAxPopUpButtonCheckBox" Content="AXPopUpButton" />
+                <CheckBox Name="ExcludeAxDisclosureTriangleCheckBox" Content="AXDisclosureTriangle" />
+              </StackPanel>
 
               <TextBlock Text="Suppressed Processes (comma separated, e.g. Vivaldi, Steam)" TextWrapping="Wrap" />
               <TextBox Name="SuppressedProcessTextBox" AcceptsReturn="True" Height="90" />

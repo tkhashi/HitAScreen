@@ -121,7 +121,7 @@ public sealed record UserSettings
     public double LabelScale { get; init; } = 1.0;
     public LabelAppearanceSettings LabelAppearance { get; init; } = new();
     public IReadOnlyList<string> RecentLabelColors { get; init; } = Array.Empty<string>();
-    public IReadOnlyList<string> ExcludedAxRoles { get; init; } = ["AXGroup"];
+    public IReadOnlyList<string> ExcludedAxRoles { get; init; } = Array.Empty<string>();
     public bool SuppressInFullscreen { get; init; } = true;
     public IReadOnlyList<string> SuppressedProcesses { get; init; } = Array.Empty<string>();
     public bool LaunchAtLogin { get; init; } = false;
@@ -219,7 +219,6 @@ public sealed record OverlayViewState(
 public static class UserSettingsNormalizer
 {
     private const string DefaultLabelCharacterSet = "ASDFGHJKLQWERTYUIOPZXCVBNM";
-    private static readonly string[] DefaultExcludedRoles = ["AXGroup"];
 
     public static UserSettings Normalize(UserSettings? settings)
     {
@@ -285,7 +284,7 @@ public static class UserSettingsNormalizer
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        return normalized.Length == 0 ? DefaultExcludedRoles : normalized;
+        return normalized;
     }
 
     private static string[] NormalizeRecentColors(IReadOnlyList<string>? colors)
