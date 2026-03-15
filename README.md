@@ -38,6 +38,99 @@ dotnet test tests/HitAScreen.Core.Tests/HitAScreen.Core.Tests.csproj
 dotnet run --project src/HitAScreen.App/HitAScreen.App.csproj
 ```
 
+## リリース運用方針
+- GitHub Actions では package / publish を実行しません（CI の build / test のみ）。
+- リリース用成果物（`.app` / `.dmg`）はローカル環境で手動作成して公開します。
+
+## 手動 publish 手順（macOS）
+1. 前提ツールを準備する。
+   - .NET SDK 10
+   - Xcode Command Line Tools（`codesign` / `xcrun` / `notarytool` / `hdiutil`）
+2. Apple 関連の値を環境変数に設定する。
+```bash
+export APP_NAME="Hit A Screen"
+export EXECUTABLE_NAME="HitAScreen.App"
+export VERSION="<version>" # 例: 0.5.0
+export APPLE_BUNDLE_ID="<bundle-id>"
+export APPLE_CERT_P12_PATH="<path-to-p12>"
+export APPLE_CERT_PASSWORD="<p12-password>"
+export APPLE_ID="<apple-id>"
+export APPLE_TEAM_ID="<apple-team-id>"
+export APPLE_APP_SPECIFIC_PASSWORD="<app-specific-password>"
+export CODESIGN_IDENTITY="Developer ID Application: <team-name> (<team-id>)"
+```
+3. 依存復元とテストを実行する。
+```bash
+dotnet restore HitAScreen.slnx
+dotnet test tests/HitAScreen.Core.Tests/HitAScreen.Core.Tests.csproj --configuration Release --no-restore
+```
+4. publish と成果物作成を実行する。
+   - App Store sandbox でのクラッシュ回避のため、`PublishSingleFile=true` を必ず有効化する（参考: Avalonia Docs「Sandbox and bundle」）。
+```bash
+TFM="net10.0"
+RID="osx-arm64"
+BUILD_ROOT="src/HitAScreen.App/bin/Release"
+PUBLISH_DIR="${BUILD_ROOT}/${TFM}/${RID}/publish"
+RELEASE_DIR="${BUILD_ROOT}/release"
+NOTARY_PROFILE="hitascreen-notary"
+DMG_NAME="HitAScreen-${VERSION}-macos-arm64.dmg"
+KEYCHAIN_PATH="${TMPDIR:-/tmp}/hitascreen-build.keychain-db"
+KEYCHAIN_PASSWORD="$(uuidgen)"
+
+dotnet publish src/HitAScreen.App/HitAScreen.App.csproj \
+  -c Release \
+  -r "${RID}" \
+  --framework "${TFM}" \
+  --self-contained true \
+  -p:PublishSingleFile=true \
+  --no-restore
+
+mkdir -p "${RELEASE_DIR}"
+
+scripts/release/create-icns.sh \
+  hit-a-screen-icon.png \
+  "${RELEASE_DIR}/AppIcon.icns"
+
+scripts/release/create-app-bundle.sh \
+  "${PUBLISH_DIR}" \
+  "${APP_NAME}" \
+  "${APPLE_BUNDLE_ID}" \
+  "${VERSION}" \
+  "${EXECUTABLE_NAME}" \
+  "${RELEASE_DIR}/AppIcon.icns" \
+  "${RELEASE_DIR}"
+
+security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+security import "${APPLE_CERT_P12_PATH}" -k "${KEYCHAIN_PATH}" -P "${APPLE_CERT_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/security
+security set-key-partition-list -S apple-tool:,apple: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+security list-keychains -d user -s "${KEYCHAIN_PATH}" $(security list-keychains -d user | tr -d '"')
+
+scripts/release/codesign-app.sh \
+  "${RELEASE_DIR}/${APP_NAME}.app" \
+  "${CODESIGN_IDENTITY}" \
+  "scripts/release/entitlements.plist"
+
+xcrun notarytool store-credentials "${NOTARY_PROFILE}" \
+  --apple-id "${APPLE_ID}" \
+  --team-id "${APPLE_TEAM_ID}" \
+  --password "${APPLE_APP_SPECIFIC_PASSWORD}"
+
+scripts/release/notarize-and-staple.sh \
+  "${RELEASE_DIR}/${APP_NAME}.app" \
+  "${NOTARY_PROFILE}"
+
+scripts/release/create-dmg.sh \
+  "${RELEASE_DIR}/${APP_NAME}.app" \
+  "${RELEASE_DIR}/${DMG_NAME}" \
+  "HitAScreen"
+
+(cd "${RELEASE_DIR}" && shasum -a 256 "${DMG_NAME}" > SHA256SUMS.txt)
+```
+5. `src/HitAScreen.App/bin/Release/release` 配下の `*.dmg` と `SHA256SUMS.txt` を GitHub Releases に手動アップロードする。
+
 ## リリース版の導入（GitHub Releases）
 1. Releases から `HitAScreen-<version>-macos-arm64.dmg` と `SHA256SUMS.txt` を取得する。
 2. ターミナルで `shasum -a 256 HitAScreen-<version>-macos-arm64.dmg` を実行し、`SHA256SUMS.txt` の値と一致することを確認する。

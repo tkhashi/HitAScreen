@@ -93,7 +93,7 @@ public partial class App : Application
         _mainWindow = new MainWindow(_orchestrator, _permissionService, _launchAtLoginService, _logger)
         {
             Title = "Hit A Screen Control Panel",
-            Icon = LoadTrayIcon()
+            Icon = LoadAppIcon()
         };
 
         _mainWindow.Closing += (_, e) =>
@@ -124,7 +124,7 @@ public partial class App : Application
     {
         _trayIcon = new TrayIcon
         {
-            Icon = LoadTrayIcon(),
+            Icon = LoadMenuBarIcon(),
             ToolTipText = "Hit A Screen",
             IsVisible = true,
             Menu = BuildTrayMenu(desktop)
@@ -276,9 +276,15 @@ public partial class App : Application
         _mainWindow.Activate();
     }
 
-    private static WindowIcon LoadTrayIcon()
+    private static WindowIcon LoadAppIcon()
     {
         using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/hit-a-screen-icon.png"));
+        return new WindowIcon(stream);
+    }
+
+    private static WindowIcon LoadMenuBarIcon()
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://HitAScreen.App/Assets/hit-a-screen-icon-menubar.png"));
         return new WindowIcon(stream);
     }
 
